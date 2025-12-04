@@ -24,12 +24,29 @@ public class StroopMinigameController : MonoBehaviour
     private int colorIndex;
     private bool isMatch; 
 
+    // Microphone manager reference
+    private MicrophoneManager microphoneManager;
+
     private void Start()
     {
         if (panelRoot != null)
             panelRoot.SetActive(false);
 
         cooldownTimer = timeBetweenRounds;
+        
+        // Get reference from singleton
+        if (MicrophoneManagerSingleton.Instance != null)
+        {
+            microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
+            microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Clean up event subscription
+        if (microphoneManager != null)
+            microphoneManager.OnNumberRecognized -= HandleNumberRecognized;
     }
 
     private void Update()
@@ -61,6 +78,15 @@ public class StroopMinigameController : MonoBehaviour
             {
                 Timeout();
             }
+        }
+    }
+
+    private void HandleNumberRecognized(int number)
+    {
+        // Only process if we're in the question active state and number is valid
+        if (questionActive && (number == 1 || number == 2))
+        {
+            HandleAnswer(number);
         }
     }
 

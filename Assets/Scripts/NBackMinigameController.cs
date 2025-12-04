@@ -41,6 +41,9 @@ public class NBackMinigameController : MonoBehaviour
     private char[] possibleLetters = { 'A', 'B', 'C', 'D' };
 
     private Coroutine sequenceCoroutine;
+    
+    // Microphone manager reference
+    private MicrophoneManager microphoneManager;
 
     private void Start()
     {
@@ -49,6 +52,19 @@ public class NBackMinigameController : MonoBehaviour
 
         state = NBackState.Cooldown;
         stateTimer = timeBetweenRounds;
+        
+        if (MicrophoneManagerSingleton.Instance != null)
+        {
+            microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
+            microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Clean up event subscription
+        if (microphoneManager != null)
+            microphoneManager.OnNumberRecognized -= HandleNumberRecognized;
     }
 
     private void Update()
@@ -184,6 +200,15 @@ public class NBackMinigameController : MonoBehaviour
         if (stateTimer <= 0f)
         {
             Timeout();
+        }
+    }
+
+    private void HandleNumberRecognized(int number)
+    {
+        // Only process if we're in the answer waiting state and number is valid
+        if (state == NBackState.WaitingForAnswer && (number == 1 || number == 2))
+        {
+            HandleAnswer(number);
         }
     }
 
