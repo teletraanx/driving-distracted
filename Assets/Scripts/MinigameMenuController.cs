@@ -20,6 +20,9 @@ public class MinigameMenuController : MonoBehaviour
     public int minCount = 1;
     public int maxCount = 12;
 
+    [Header("Microphone")]
+    [SerializeField] TMP_Dropdown microphoneDropdown;
+
     private readonly List<TMP_Dropdown> dropdowns = new List<TMP_Dropdown>();
 
     private readonly List<(string label, MinigameType type)> minigameOptions =
@@ -37,7 +40,8 @@ public class MinigameMenuController : MonoBehaviour
             warningText.text = "";
 
         SetupCountDropdown();
-        SetupTimingFields(); 
+        SetupTimingFields();
+        InitMicrophoneDrowdown();
     }
 
     private void SetupCountDropdown()
@@ -182,6 +186,54 @@ public class MinigameMenuController : MonoBehaviour
             warningText.text = "";
 
         SceneManager.LoadScene(gameplaySceneName);
+    }
+
+    void InitMicrophoneDrowdown()
+    {
+        if (!microphoneDropdown) return;
+        
+        microphoneDropdown.ClearOptions();
+        var devices = Microphone.devices;
+        
+        if (devices.Length == 0)
+        {
+            microphoneDropdown.AddOptions(new List<string> { "No Microphones Found" });
+            microphoneDropdown.interactable = false;
+            return;
+        }
+        
+        var options = new List<string>(devices);
+        microphoneDropdown.AddOptions(options);
+        microphoneDropdown.onValueChanged.AddListener(OnMicrophoneChanged);
+        
+        // Load saved selection or default to first device
+        var cfg = EnsureConfig();
+        if (cfg.selectedMicrophoneIndex >= 0 && cfg.selectedMicrophoneIndex < devices.Length)
+        {
+            microphoneDropdown.SetValueWithoutNotify(cfg.selectedMicrophoneIndex);
+        }
+        else
+        {
+            microphoneDropdown.SetValueWithoutNotify(0);
+            cfg.selectedMicrophoneIndex = 0;
+        }
+    }
+
+    void OnMicrophoneChanged(int index)
+    {
+        var cfg = EnsureConfig();
+        cfg.selectedMicrophoneIndex = index;
+    }
+
+    RuntimeGameConfig EnsureConfig()
+    {
+        var cfg = RuntimeGameConfig.Instance;
+        if (cfg == null)
+        {
+            var go = new GameObject("RuntimeGameConfig");
+            cfg = go.AddComponent<RuntimeGameConfig>();
+        }
+        return cfg;
     }
 
     public void OnExitApplicationPressed()
