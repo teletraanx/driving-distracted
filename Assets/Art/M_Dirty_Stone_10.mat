@@ -1,0 +1,119 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: M_Dirty_Stone_10
+  m_Shader: {fileID: -6465566751694194690, guid: ad4b550652db2544bbd19bf8b67891de, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords:
+  - _EMISSION
+  m_LightmapFlags: 2
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses:
+  - MOTIONVECTORS
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _Ambient_Occlusion:
+        m_Texture: {fileID: 2800000, guid: 71491e7f8b507064099b6c367eb9a45c, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Base_Color:
+        m_Texture: {fileID: 2800000, guid: c7364b9832c78354f89c861edf8c5f6c, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Normal:
+        m_Texture: {fileID: 2800000, guid: c23ec58d023eefd43af6e18ce2662371, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Smoothness:
+        m_Texture: {fileID: 2800000, guid: fd5646e9349835b4aae9052dc9a81ef3, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_956c8bd6e59d4e6c89f3359ad91177bc_Texture_1:
+        m_Texture: {fileID: 2800000, guid: 475ddea1f4de11642afaab7671feb863, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_956c8bd6e59d4e6c89f3359ad91177bc_Texture_1_Texture2D:
+        m_Texture: {fileID: 2800000, guid: 475ddea1f4de11642afaab7671feb863, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_9983fb1620f94c2ebf2a32206dd4fe88_Texture_1:
+        m_Texture: {fileID: 2800000, guid: b437a069f4b6a8b448802bd4b2881a01, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_9983fb1620f94c2ebf2a32206dd4fe88_Texture_1_Texture2D:
+        m_Texture: {fileID: 2800000, guid: b437a069f4b6a8b448802bd4b2881a01, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_a69ba77528b34edfaed6950d40405840_Texture_1:
+        m_Texture: {fileID: 2800000, guid: 393d2fbbf8ba5f44dadfa062649911ae, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_a69ba77528b34edfaed6950d40405840_Texture_1_Texture2D:
+        m_Texture: {fileID: 2800000, guid: 393d2fbbf8ba5f44dadfa062649911ae, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_c3b7b0897e154f9f83cf15c26be0c2db_Texture_1:
+        m_Texture: {fileID: 2800000, guid: 6b800abe5e0d841459d9bc9af2eef69a, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_c3b7b0897e154f9f83cf15c26be0c2db_Texture_1_Texture2D:
+        m_Texture: {fileID: 2800000, guid: 6b800abe5e0d841459d9bc9af2eef69a, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_d3eddfc4a9704e83acd2fc19ee8fd631_Texture_1:
+        m_Texture: {fileID: 2800000, guid: 57ae1ac13bb9e044c8e0d3c7a7aae72e, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Triplanar_d3eddfc4a9704e83acd2fc19ee8fd631_Texture_1_Texture2D:
+        m_Texture: {fileID: 2800000, guid: 57ae1ac13bb9e044c8e0d3c7a7aae72e, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - unity_Lightmaps:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - unity_LightmapsInd:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - unity_ShadowMasks:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _Dust_Intensity: 10
+    - _Invert_Mask: 0
+    - _QueueControl: 0
+    - _QueueOffset: 0
+    - _Texture_Triplanar_Blend: 5
+    m_Colors:
+    - _Texture_Size: {r: 1, g: 1, b: 1, a: 0}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
+--- !u!114 &2590118100888345245
+MonoBehaviour:
+  m_ObjectHideFlags: 11
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0353a89b1f911e48b9e16bdc9f2e058, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 10
