@@ -24,12 +24,31 @@ public class MathMinigameController : MonoBehaviour
     private int option2Value;
     private string currentQuestion;    
 
+    // Microphone manager reference
+    private MicrophoneManager microphoneManager;
+
     private void Start()
     {
         if (panelRoot != null)
             panelRoot.SetActive(false);
 
         cooldownTimer = timeBetweenQuestions;
+        
+        if (MicrophoneManagerSingleton.Instance != null)
+        {
+            Debug.Log("[MathGame] Starting MicrophoneManager instance...");
+            microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
+            microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+        }
+
+        
+    }
+
+    private void OnDestroy()
+    {
+        // Clean up event subscription
+        if (microphoneManager != null)
+            microphoneManager.OnNumberRecognized -= HandleNumberRecognized;
     }
 
     private void Update()
@@ -78,6 +97,15 @@ public class MathMinigameController : MonoBehaviour
             return 2;
 
         return 0;
+    }
+
+    private void HandleNumberRecognized(int number)
+    {
+        // Only process if question is active and number is valid
+        if (questionActive && (number == 1 || number == 2))
+        {
+            HandleAnswer(number);
+        }
     }
 
     private void StartNewQuestion()
@@ -161,7 +189,7 @@ public class MathMinigameController : MonoBehaviour
                 correctAnswer = a - b;
                 break;
             case 2:
-                opChar = '×';
+                opChar = 'ï¿½';
                 correctAnswer = a * b;
                 break;
         }

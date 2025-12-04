@@ -167,6 +167,16 @@ public class MinigameManager : MonoBehaviour
             runFinished = true;
             runFinishedTime = Time.time;
             Debug.Log("[Minigame] Run finished. Going to end screen...");
+
+            // Stop speech recognition when minigame sequence ends (NOT WORKING)
+            /*if (MicrophoneManagerSingleton.Instance != null)
+            {
+                var microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
+                if (microphoneManager != null)
+                {
+                    microphoneManager.StopMicrophoneStreaming();
+                }
+            }*/
         }
     }
 

@@ -1,7 +1,11 @@
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using TMPro;
+using Debug = UnityEngine.Debug;
 
 public class MinigameMenuController : MonoBehaviour
 {
@@ -11,14 +15,17 @@ public class MinigameMenuController : MonoBehaviour
     public TMP_Dropdown dropdownPrefab;
     public TMP_Text warningText;
 
-    [Header("Timing UI")] 
+    [Header("Timing UI")]
     public TMP_InputField answerTimeInputField;
     public TMP_InputField gapTimeInputField;
 
     [Header("Game Settings")]
-    public string gameplaySceneName = "MainGame"; 
+    public string gameplaySceneName = "MainGame";
     public int minCount = 1;
     public int maxCount = 12;
+
+    [Header("Microphone")]
+    [SerializeField] TMP_Dropdown microphoneDropdown;
 
     private readonly List<TMP_Dropdown> dropdowns = new List<TMP_Dropdown>();
 
@@ -36,8 +43,18 @@ public class MinigameMenuController : MonoBehaviour
         if (warningText != null)
             warningText.text = "";
 
+        var cfg = EnsureConfig();
+
+        if (!cfg.systemChecksPerformed)
+        {
+            PerformSystemChecks();
+            cfg.systemChecksPerformed = true;
+        }
+        
+
         SetupCountDropdown();
-        SetupTimingFields(); 
+        SetupTimingFields();
+        InitMicrophoneDrowdown();
     }
 
     private void SetupCountDropdown()
@@ -184,6 +201,54 @@ public class MinigameMenuController : MonoBehaviour
         SceneManager.LoadScene(gameplaySceneName);
     }
 
+    void InitMicrophoneDrowdown()
+    {
+        if (!microphoneDropdown) return;
+
+        microphoneDropdown.ClearOptions();
+        var devices = Microphone.devices;
+
+        if (devices.Length == 0)
+        {
+            microphoneDropdown.AddOptions(new List<string> { "No Microphones Found" });
+            microphoneDropdown.interactable = false;
+            return;
+        }
+
+        var options = new List<string>(devices);
+        microphoneDropdown.AddOptions(options);
+        microphoneDropdown.onValueChanged.AddListener(OnMicrophoneChanged);
+
+        // Load saved selection or default to first device
+        var cfg = EnsureConfig();
+        if (cfg.selectedMicrophoneIndex >= 0 && cfg.selectedMicrophoneIndex < devices.Length)
+        {
+            microphoneDropdown.SetValueWithoutNotify(cfg.selectedMicrophoneIndex);
+        }
+        else
+        {
+            microphoneDropdown.SetValueWithoutNotify(0);
+            cfg.selectedMicrophoneIndex = 0;
+        }
+    }
+
+    void OnMicrophoneChanged(int index)
+    {
+        var cfg = EnsureConfig();
+        cfg.selectedMicrophoneIndex = index;
+    }
+
+    RuntimeGameConfig EnsureConfig()
+    {
+        var cfg = RuntimeGameConfig.Instance;
+        if (cfg == null)
+        {
+            var go = new GameObject("RuntimeGameConfig");
+            cfg = go.AddComponent<RuntimeGameConfig>();
+        }
+        return cfg;
+    }
+
     public void OnExitApplicationPressed()
     {
         #if UNITY_EDITOR
@@ -191,5 +256,213 @@ public class MinigameMenuController : MonoBehaviour
         #else
         Application.Quit();
         #endif
+    }
+
+    // System checks for speech recognition
+    void PerformSystemChecks()
+    {
+        if (!IsSupportedOS())
+        {
+            ShowMessageBox("Unsupported Operating System",
+                "This application requires Windows or Linux to run speech recognition features.\n\n" +
+                "Please use a supported operating system to access all functionality.");
+            SetSpeechRecognitionAvailable(false);
+            return;
+        }
+
+        if (!HasNvidiaGPU())
+        {
+            ShowMessageBox("No NVIDIA GPU Detected",
+                "Speech recognition requires an NVIDIA GPU for optimal performance.\n\n" +
+                "Please ensure you have an NVIDIA graphics card installed to use speech-to-text features.");
+            SetSpeechRecognitionAvailable(false);
+            return;
+        }
+
+        if (!CheckFFmpegInstallation())
+        {
+            ShowMessageBox("FFmpeg Not Found",
+                "FFmpeg is required for speech recognition but was not found on your system.\n\n" +
+                "Please install FFmpeg and ensure it's in your system PATH to use speech-to-text features.\n" +
+                "Instructions on how to install FFmpeg can be found in the included README file.");
+            SetSpeechRecognitionAvailable(false);
+            return;
+        }
+
+        if (!CheckWhisperModel())
+        {
+            ShowMessageBox("Whisper Model Missing",
+                "The required Whisper speech recognition model was not found.\n\n" +
+                "Please ensure that the model file exists in the StreamingAssets/Whisper directory.");
+            SetSpeechRecognitionAvailable(false);
+            return;
+        }
+
+        SetSpeechRecognitionAvailable(true);
+    }
+
+    bool IsSupportedOS()
+    {
+        var os = SystemInfo.operatingSystem;
+        if (string.IsNullOrEmpty(os)) return false;
+        return os.Contains("Windows") || os.Contains("Linux");
+    }
+
+    bool HasNvidiaGPU()
+    {
+        var gpuName = SystemInfo.graphicsDeviceName ?? "";
+        return gpuName.Contains("NVIDIA") || gpuName.Contains("GeForce") || gpuName.Contains("Quadro");
+    }
+
+    bool CheckFFmpegInstallation()
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = "-version",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using (var process = Process.Start(startInfo))
+            {
+                if (process == null) return false;
+                process.WaitForExit(5000);
+                if (!process.HasExited)
+                {
+                    try { process.Kill(); } catch { }
+                    return false;
+                }
+                return process.ExitCode == 0;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    bool CheckWhisperModel()
+    {
+        string modelPath = GetWhisperModelPath();
+        if (string.IsNullOrEmpty(modelPath)) return false;
+        return File.Exists(modelPath);
+    }
+
+    string GetWhisperModelPath()
+    {
+#if UNITY_EDITOR
+        return Path.Combine(Application.dataPath, "Whisper", "ggml-medium.en.bin");
+#else
+        return Path.Combine(Application.streamingAssetsPath, "Whisper", "ggml-medium.en.bin");
+#endif
+    }
+
+    void ShowMessageBox(string title, string message)
+    {
+        var canvas = new GameObject("MessageBoxCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        canvas.transform.SetParent(transform, false);
+
+        var canvasComp = canvas.GetComponent<Canvas>();
+        canvasComp.renderMode = RenderMode.ScreenSpaceOverlay;
+
+        int uiLayer = LayerMask.NameToLayer("UI");
+        if (uiLayer != -1) canvas.layer = uiLayer;
+
+        var canvasRect = canvas.GetComponent<RectTransform>();
+        canvasRect.anchorMin = Vector2.zero;
+        canvasRect.anchorMax = Vector2.one;
+        canvasRect.sizeDelta = Vector2.zero;
+        canvasRect.anchoredPosition = Vector2.zero;
+
+        var bgPanel = new GameObject("Background", typeof(Image));
+        bgPanel.transform.SetParent(canvas.transform, false);
+        var bgRect = bgPanel.GetComponent<RectTransform>();
+        bgRect.anchorMin = Vector2.zero;
+        bgRect.anchorMax = Vector2.one;
+        bgRect.sizeDelta = Vector2.zero;
+
+        var bgImage = bgPanel.GetComponent<Image>();
+        bgImage.color = new Color(0, 0, 0, 0.7f);
+
+        var msgPanel = new GameObject("MessagePanel", typeof(Image));
+        msgPanel.transform.SetParent(canvas.transform, false);
+        var msgRect = msgPanel.GetComponent<RectTransform>();
+        msgRect.anchorMin = new Vector2(0.2f, 0.3f);
+        msgRect.anchorMax = new Vector2(0.8f, 0.7f);
+        msgRect.sizeDelta = Vector2.zero;
+
+        var msgImage = msgPanel.GetComponent<Image>();
+        msgImage.color = new Color(0.1f, 0.1f, 0.1f, 0.95f);
+
+        var titleText = new GameObject("Title", typeof(TextMeshProUGUI));
+        titleText.transform.SetParent(msgPanel.transform, false);
+        var titleRect = titleText.GetComponent<RectTransform>();
+        titleRect.anchorMin = new Vector2(0.1f, 0.7f);
+        titleRect.anchorMax = new Vector2(0.9f, 0.9f);
+        titleRect.sizeDelta = Vector2.zero;
+
+        var titleComponent = titleText.GetComponent<TextMeshProUGUI>();
+        titleComponent.text = title;
+        titleComponent.fontSize = 24;
+        titleComponent.fontStyle = FontStyles.Bold;
+        titleComponent.color = Color.white;
+        titleComponent.alignment = TextAlignmentOptions.Center;
+
+        var msgText = new GameObject("Message", typeof(TextMeshProUGUI));
+        msgText.transform.SetParent(msgPanel.transform, false);
+        var msgRect2 = msgText.GetComponent<RectTransform>();
+        msgRect2.anchorMin = new Vector2(0.1f, 0.2f);
+        msgRect2.anchorMax = new Vector2(0.9f, 0.7f);
+        msgRect2.sizeDelta = Vector2.zero;
+
+        var msgComponent = msgText.GetComponent<TextMeshProUGUI>();
+        msgComponent.text = message;
+        msgComponent.fontSize = 16;
+        msgComponent.color = Color.white;
+        msgComponent.alignment = TextAlignmentOptions.Center;
+        msgComponent.richText = true;
+
+        var buttonGO = new GameObject("DismissButton", typeof(Button), typeof(Image));
+        buttonGO.transform.SetParent(msgPanel.transform, false);
+        var btnRect = buttonGO.GetComponent<RectTransform>();
+        btnRect.anchorMin = new Vector2(0.3f, 0.05f);
+        btnRect.anchorMax = new Vector2(0.7f, 0.2f);
+        btnRect.sizeDelta = Vector2.zero;
+
+        var btnImage = buttonGO.GetComponent<Image>();
+        btnImage.color = new Color(0.3f, 0.6f, 1f);
+
+        var buttonText = new GameObject("ButtonText", typeof(TextMeshProUGUI));
+        buttonText.transform.SetParent(buttonGO.transform, false);
+        var btnTextRect = buttonText.GetComponent<RectTransform>();
+        btnTextRect.anchorMin = Vector2.zero;
+        btnTextRect.anchorMax = Vector2.one;
+        btnTextRect.sizeDelta = Vector2.zero;
+
+        var btnTextComponent = buttonText.GetComponent<TextMeshProUGUI>();
+        btnTextComponent.text = "OK";
+        btnTextComponent.fontSize = 18;
+        btnTextComponent.color = Color.white;
+        btnTextComponent.alignment = TextAlignmentOptions.Center;
+
+        var button = buttonGO.GetComponent<Button>();
+        button.onClick.AddListener(() =>
+        {
+            Destroy(canvas);
+        });
+    }
+
+    void SetSpeechRecognitionAvailable(bool available)
+    {
+        var cfg = EnsureConfig();
+        if (cfg != null)
+        {
+            cfg.speechRecognitionAvailable = available;
+        }
     }
 }
