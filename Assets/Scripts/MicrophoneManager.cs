@@ -1,29 +1,26 @@
-using System;
+﻿using System;
 using System.Diagnostics;
-using System.IO.Pipes;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using System.IO;
-using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 public class MicrophoneManager : MonoBehaviour
 {
     private AudioClip audioClip;
-    private byte[] audioBuffer;
-    private NamedPipeServerStream pipeServer;
     private Process ffmpegProcess;
     private CancellationTokenSource cancellationTokenSource;
     private bool isStreaming = false;
-    private string currentPipeName = "";
     private Task streamingTask;
 
     private readonly object _lockObject = new();
     private string _currentOutput = "";
 
     public event Action<int> OnNumberRecognized;
+    public event Action OnUnrecognizedSpeech;
 
+    // ── FFmpeg args ─────────────────────────────────────────────────────
     private string ffmpegWindowsArguments =
         "-f s16le -ar 48000 -ac 2 -i - " +
         "-vn -af \"whisper=model=Whisper/ggml-medium.en.bin:language=en:queue=3:destination=-:format=json\" " +
@@ -41,27 +38,17 @@ public class MicrophoneManager : MonoBehaviour
     private int lastSamplePosition = 0;
     private const int chunkSamples = 1024;
 
-    public event Action OnUnrecognizedSpeech;
+    [Header("Mic Debug")]
+    public float currentLevel = 0f;        // RMS of latest chunk
+    public float lastWhisperTime = -1f;    // Time.time of last recognized Whisper line
+    public string lastWhisperText = "";    // Last text Whisper produced
+
+    public bool IsStreaming => isStreaming;
 
 
-    void Start()
+    private void Start()
     {
-        var cfg = RuntimeGameConfig.Instance;
-        if (cfg != null)
-        {
-            if (cfg.inputMode == InputMode.Keyboard)
-            {
-                UnityEngine.Debug.Log("[Mic] Input mode is Keyboard; not starting microphone streaming.");
-                return;
-            }
-
-            if (!cfg.speechRecognitionAvailable)
-            {
-                UnityEngine.Debug.Log("Speech recognition is not available; speech-to-text processing will not be attempted");
-                return;
-            }
-        }
-
+        // Decide FFmpeg arguments based on OS
         UnityEngine.Debug.Log(SystemInfo.operatingSystem);
         if (SystemInfo.operatingSystem.Contains("Linux"))
         {
@@ -74,21 +61,10 @@ public class MicrophoneManager : MonoBehaviour
             ffmpegArguments = ffmpegWindowsArguments;
         }
 
-        if (Microphone.devices.Length > 0)
-        {
-            for (int i = 0; i < Microphone.devices.Length; i++)
-            {
-                UnityEngine.Debug.Log($"[Mic] Device {i}: {Microphone.devices[i]}");
-            }
-        }
-        else
-        {
-            UnityEngine.Debug.Log("No devices found.");
-        }
-
+        // Always initialize mic + pipeline once.
         InitializeAudioCapture();
         StartMicrophoneStreaming();
-        UnityEngine.Debug.Log("Start function finished executing.");
+        UnityEngine.Debug.Log("[Mic] MicrophoneManager initialized and streaming started.");
     }
 
     private void InitializeAudioCapture()
@@ -108,7 +84,7 @@ public class MicrophoneManager : MonoBehaviour
         }
 
         micName = Microphone.devices[selectedMicrophoneIndex];
-        UnityEngine.Debug.Log($"Using microphone: {micName}");
+        UnityEngine.Debug.Log($"[Mic] Using microphone: {micName}");
 
         audioClip = Microphone.Start(micName, true, 10, 48000);
 
@@ -118,7 +94,7 @@ public class MicrophoneManager : MonoBehaviour
         lastSamplePosition = 0;
     }
 
-    void Update()
+    private void Update()
     {
         string currentOutput;
 
@@ -134,11 +110,34 @@ public class MicrophoneManager : MonoBehaviour
         }
     }
 
-    void OnDestroy()
+    private void OnDestroy()
     {
         StopStreaming();
     }
 
+    // ─────────────────────────────────────────────────────────────
+    //  PUBLIC: pipeline is always started in Start(), but we keep
+    //  this in case you ever want to restart.
+    // ─────────────────────────────────────────────────────────────
+    public void StartMicrophoneStreaming()
+    {
+        if (isStreaming)
+        {
+            UnityEngine.Debug.Log("[Mic] Streaming already active.");
+            return;
+        }
+
+        streamingTask = StartStreaming();
+    }
+
+    public void StopMicrophoneStreaming()
+    {
+        StopStreaming();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  Async pipeline startup
+    // ─────────────────────────────────────────────────────────────
     private async Task StartStreaming()
     {
         if (isStreaming)
@@ -171,14 +170,14 @@ public class MicrophoneManager : MonoBehaviour
                 WorkingDirectory = Application.streamingAssetsPath
             };
 
-            UnityEngine.Debug.Log("Attempting start of FFmpeg...");
+            UnityEngine.Debug.Log("[Mic] Attempting start of FFmpeg...");
             ffmpegProcess = Process.Start(startInfo);
 
             DataReceivedEventHandler errorHandler = (sender, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    UnityEngine.Debug.Log("[FFmpeg ERR] " + e.Data);                  
+                    UnityEngine.Debug.Log("[FFmpeg ERR] " + e.Data);
                 }
             };
 
@@ -187,7 +186,6 @@ public class MicrophoneManager : MonoBehaviour
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     UnityEngine.Debug.Log("[FFmpeg OUT] " + e.Data);
-
                     ParseSpeechResult(e.Data);
                 }
             };
@@ -198,7 +196,7 @@ public class MicrophoneManager : MonoBehaviour
             ffmpegProcess.BeginErrorReadLine();
             ffmpegProcess.BeginOutputReadLine();
 
-            UnityEngine.Debug.Log("Starting audio capture coroutine...");
+            UnityEngine.Debug.Log("[Mic] Starting audio capture coroutine...");
             StartCoroutine(AudioCaptureLoopCoroutine());
             await Task.Yield();
         }
@@ -209,10 +207,6 @@ public class MicrophoneManager : MonoBehaviour
         catch (Exception ex)
         {
             UnityEngine.Debug.LogError($"Streaming error: {ex.Message}");
-        }
-        finally
-        {
-            // 
         }
     }
 
@@ -306,6 +300,7 @@ public class MicrophoneManager : MonoBehaviour
 
             string trimmed = data.Trim();
 
+            // Expect JSON lines from whisper: {"start":...,"end":...,"text":"..."}
             if (!trimmed.StartsWith("{") || !trimmed.EndsWith("}"))
             {
                 return;
@@ -319,6 +314,7 @@ public class MicrophoneManager : MonoBehaviour
             if (string.IsNullOrWhiteSpace(text))
                 return;
 
+            // Don’t treat known “noise” annotations as real speech
             string lower = text.ToLowerInvariant();
             if (lower.Contains("static crackling") ||
                 lower.Contains("static") ||
@@ -349,16 +345,16 @@ public class MicrophoneManager : MonoBehaviour
         }
 
         int channels = audioClip.channels;
-        int samplesPerChunk = chunkSamples;      
-        int totalClipSamples = audioClip.samples; 
+        int samplesPerChunk = chunkSamples;
+        int totalClipSamples = audioClip.samples;
         int floatsPerChunk = samplesPerChunk * channels;
 
         float[] tempBuffer = new float[floatsPerChunk];
-        byte[] byteBuffer = new byte[floatsPerChunk * 2]; 
+        byte[] byteBuffer = new byte[floatsPerChunk * 2];
 
         UnityEngine.Debug.Log("[Mic] AudioCaptureLoopCoroutine started.");
 
-        while (true) 
+        while (true)
         {
             if (!isStreaming || ffmpegProcess == null || ffmpegProcess.HasExited)
             {
@@ -366,7 +362,7 @@ public class MicrophoneManager : MonoBehaviour
                 continue;
             }
 
-            int micPosition = Microphone.GetPosition(micName); 
+            int micPosition = Microphone.GetPosition(micName);
             if (micPosition < 0)
             {
                 yield return null;
@@ -389,14 +385,19 @@ public class MicrophoneManager : MonoBehaviour
             if (lastSamplePosition >= totalClipSamples)
                 lastSamplePosition -= totalClipSamples;
 
+            // Compute RMS level for debug UI
+            float sumSq = 0f;
             for (int i = 0; i < floatsPerChunk; i++)
             {
                 float f = Mathf.Clamp(tempBuffer[i], -1f, 1f);
+                sumSq += f * f;
+
                 short sample = (short)(f * short.MaxValue);
                 int byteIndex = i * 2;
                 byteBuffer[byteIndex] = (byte)(sample & 0xff);
                 byteBuffer[byteIndex + 1] = (byte)((sample >> 8) & 0xff);
             }
+            currentLevel = Mathf.Sqrt(sumSq / floatsPerChunk);
 
             if (ffmpegProcess != null && !ffmpegProcess.HasExited)
             {
@@ -408,7 +409,6 @@ public class MicrophoneManager : MonoBehaviour
                 catch (Exception ex)
                 {
                     UnityEngine.Debug.LogError($"[Mic] Error writing to ffmpeg stdin: {ex.Message}");
-                   
                 }
             }
 
@@ -456,36 +456,30 @@ public class MicrophoneManager : MonoBehaviour
         }
     }
 
-    public void StartMicrophoneStreaming()
-    {
-        streamingTask = StartStreaming();
-    }
-
-    public void StopMicrophoneStreaming()
-    {
-        StopStreaming();
-    }
-
     private void HandleRecognizedText(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
 
+        text = text.Trim();
+        lastWhisperTime = Time.time;
+        lastWhisperText = text;
 
         var cfg = RuntimeGameConfig.Instance;
         if (cfg == null || cfg.inputMode != InputMode.Microphone)
         {
+            // Pipeline is still useful for mic-test UI, but we don’t drive minigames
             return;
         }
 
-        text = text.Trim().ToLowerInvariant();
-        UnityEngine.Debug.Log($"[Mic] Recognized text: \"{text}\"");
+        string lower = text.ToLowerInvariant();
+        UnityEngine.Debug.Log($"[Mic] Recognized text: \"{lower}\"");
 
         int value;
-        if (TryMapTextToNumber(text, out value))
+        if (TryMapTextToNumber(lower, out value))
         {
             UnityEngine.Debug.Log($"[Mic] Mapped recognized text to number: {value}");
-            OnNumberRecognized?.Invoke(value);   
+            OnNumberRecognized?.Invoke(value);
         }
     }
 
@@ -497,7 +491,6 @@ public class MicrophoneManager : MonoBehaviour
             return false;
 
         text = text.Trim().ToLowerInvariant();
-
         string bare = text.Trim('.', ',', '!', '?', ';', ':', '"', '\'');
 
         if (bare == "one" || bare == "1" || bare == "when")
@@ -518,7 +511,8 @@ public class MicrophoneManager : MonoBehaviour
             return true;
         }
 
-        if (bare.Contains("two") || bare.Contains(" to ") || bare.Contains("too") || bare.Contains("here") || bare.Contains("clear") || bare.Contains("thank you"))
+        if (bare.Contains("two") || bare.Contains(" to ") || bare.Contains("too") ||
+            bare.Contains("here") || bare.Contains("clear") || bare.Contains("thank you"))
         {
             number = 2;
             return true;
@@ -528,6 +522,4 @@ public class MicrophoneManager : MonoBehaviour
         OnUnrecognizedSpeech?.Invoke();
         return false;
     }
-
-
 }
