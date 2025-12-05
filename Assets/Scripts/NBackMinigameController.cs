@@ -25,14 +25,15 @@ public class NBackMinigameController : MonoBehaviour
     public TMP_Text feedbackText;
 
     [Header("Timing")]
-    public float timeBetweenRounds = 0f;
-    public float startBufferTime = 3f;
+    public float timeBetweenRounds = 0f;   
+    public float startBufferTime = 3f;    
     public float letterShowDuration = 1f;
     public float letterGapDuration = 0.5f;
-    public float answerDuration = 8f;
+    public float answerDuration = 8f;     
 
     [Header("Sequence Settings")]
-    public int sequenceLength = 3;
+    public int sequenceLength = 4;        
+    public int nBackOffset = 2;           
 
     [Header("Timeout")]
     public bool neverTimeout = true;
@@ -41,14 +42,12 @@ public class NBackMinigameController : MonoBehaviour
     private float stateTimer = 0f;
 
     private char[] sequence;
-    private char correctLetter;
-    private char wrongLetter;
-    private int correctOptionIndex;
+    private char probeLetter;          
+    private bool isMatchTarget;        
 
     private char[] possibleLetters = { 'A', 'B', 'C', 'D' };
 
     private Coroutine sequenceCoroutine;
-
     private MicrophoneManager microphoneManager;
 
     private int trialsRemaining = 0;
@@ -84,6 +83,9 @@ public class NBackMinigameController : MonoBehaviour
         {
             trialsTotal = trialsRemaining = 1;
         }
+
+        int minLen = Mathf.Max(2, nBackOffset + 1);
+        sequenceLength = Mathf.Max(sequenceLength, minLen);
 
         stateTimer = timeBetweenRounds;
 
@@ -124,7 +126,7 @@ public class NBackMinigameController : MonoBehaviour
                 HandleStartBuffer();
                 break;
 
-            case NBackState.ShowingSequence:
+            case NBackState.ShowingSequence:              
                 break;
 
             case NBackState.WaitingForAnswer:
@@ -132,7 +134,6 @@ public class NBackMinigameController : MonoBehaviour
                 break;
         }
     }
-
     private void HandleCooldown()
     {
         if (stateTimer > 0f)
@@ -143,6 +144,13 @@ public class NBackMinigameController : MonoBehaviour
             if (MinigameManager.Instance != null &&
                 MinigameManager.Instance.CanStartMinigame(MinigameType.NBack))
             {
+                if (MinigameManager.Instance != null)
+                {
+                    trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
+                    trialsRemaining = trialsTotal;
+                    timeBetweenRounds = MinigameManager.Instance.globalTrialGap;
+                }
+
                 MinigameManager.Instance.NotifyMinigameStarted(MinigameType.NBack);
                 runStarted = true;
                 BeginStartBuffer();
@@ -199,8 +207,7 @@ public class NBackMinigameController : MonoBehaviour
         state = NBackState.ShowingSequence;
         stateTimer = 0f;
 
-        GenerateSequence();
-        GenerateOptions();
+        GenerateSequenceAndProbe();  
 
         if (phaseText != null)
             phaseText.text = "WATCH THE ORDER";
@@ -219,6 +226,27 @@ public class NBackMinigameController : MonoBehaviour
         sequenceCoroutine = StartCoroutine(PlaySequenceCoroutine());
     }
 
+    private IEnumerator PlaySequenceCoroutine()
+    {
+        if (letterText != null)
+            letterText.text = "";
+
+        for (int i = 0; i < sequence.Length; i++)
+        {
+            if (letterText != null)
+                letterText.text = sequence[i].ToString();
+
+            yield return new WaitForSeconds(letterShowDuration);
+
+            if (letterText != null)
+                letterText.text = "";
+
+            yield return new WaitForSeconds(letterGapDuration);
+        }
+
+        StartAnswerPhase();
+    }
+
     private void StartAnswerPhase()
     {
         state = NBackState.WaitingForAnswer;
@@ -230,28 +258,24 @@ public class NBackMinigameController : MonoBehaviour
             phaseText.text = "NOW ANSWER";
 
         if (instructionText != null)
-            instructionText.text = "Which letter came BEFORE the last one?";
+        {
+            instructionText.text =
+                $"Did this letter match the letter {nBackOffset} back?\n" +
+                "Say/Press 1: YES\n" +
+                "Say/Press 2: NO";
+        }
 
         if (letterText != null)
-            letterText.text = "";
+            letterText.text = probeLetter.ToString();
 
         if (feedbackText != null)
             feedbackText.enabled = false;
 
-        if (correctOptionIndex == 1)
-        {
-            if (option1Text != null)
-                option1Text.text = $"Say/Press 1: {correctLetter}";
-            if (option2Text != null)
-                option2Text.text = $"Say/Press 2: {wrongLetter}";
-        }
-        else
-        {
-            if (option1Text != null)
-                option1Text.text = $"Say/Press 1: {wrongLetter}";
-            if (option2Text != null)
-                option2Text.text = $"Say/Press 2: {correctLetter}";
-        }
+        if (option1Text != null)
+            option1Text.text = "Say/Press 1: YES";
+
+        if (option2Text != null)
+            option2Text.text = "Say/Press 2: NO";
     }
 
     private void HandleWaitingForAnswer()
@@ -263,7 +287,6 @@ public class NBackMinigameController : MonoBehaviour
             return;
         }
 
-
         if (neverTimeout || MinigameManager.Instance == null ||
             MinigameManager.Instance.globalAnswerDuration <= 0f)
             return;
@@ -273,6 +296,21 @@ public class NBackMinigameController : MonoBehaviour
         {
             Timeout();
         }
+    }
+    private int GetPlayerInput()
+    {
+        if (inputMode != InputMode.Keyboard)
+            return 0;
+
+        if (Keyboard.current == null) return 0;
+
+        if (Keyboard.current.digit1Key.wasPressedThisFrame) return 1;
+        if (Keyboard.current.digit2Key.wasPressedThisFrame) return 2;
+
+        if (Keyboard.current.numpad1Key.wasPressedThisFrame) return 1;
+        if (Keyboard.current.numpad2Key.wasPressedThisFrame) return 2;
+
+        return 0;
     }
 
     private void HandleNumberRecognized(int number)
@@ -322,6 +360,72 @@ public class NBackMinigameController : MonoBehaviour
         feedbackText.enabled = false;
     }
 
+    private void HandleAnswer(int chosenOption)
+    {
+        bool playerSaysMatch;
+        if (chosenOption == 1)      
+            playerSaysMatch = true;
+        else if (chosenOption == 2) 
+            playerSaysMatch = false;
+        else
+            return;
+
+        bool isCorrect = (playerSaysMatch == isMatchTarget);
+        MinigameOutcome outcome = isCorrect ? MinigameOutcome.Correct : MinigameOutcome.Incorrect;
+
+        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
+        if (trialsDoneSoFar > trialsTotal)
+            trialsDoneSoFar = trialsTotal;
+
+        string seqString = new string(sequence);
+        string detail =
+            $"[Trial {trialsDoneSoFar}/{trialsTotal}] NBack (N={nBackOffset}): " +
+            $"sequence={seqString}, probe={probeLetter}, " +
+            $"isMatchTarget={isMatchTarget}, playerSaysMatch={playerSaysMatch}";
+
+        float responseTime = Time.time - currentTrialStartTime;
+
+        if (MinigameManager.Instance != null)
+        {
+            MinigameManager.Instance.RegisterResult(
+                MinigameType.NBack,
+                outcome,
+                isCorrect,
+                detail,
+                responseTime
+            );
+        }
+
+        EndRound();
+    }
+
+    private void Timeout()
+    {
+        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
+        if (trialsDoneSoFar > trialsTotal)
+            trialsDoneSoFar = trialsTotal;
+
+        string seqString = new string(sequence);
+        string detail =
+            $"[Trial {trialsDoneSoFar}/{trialsTotal}] NBack (N={nBackOffset}): " +
+            $"sequence={seqString}, probe={probeLetter}, isMatchTarget={isMatchTarget} (Timeout)";
+
+        float responseTime = Time.time - currentTrialStartTime;
+
+        if (MinigameManager.Instance != null)
+        {
+            MinigameManager.Instance.RegisterResult(
+                MinigameType.NBack,
+                MinigameOutcome.Timeout,
+                false,
+                detail,
+                responseTime
+            );
+        }
+
+        EndRound();
+    }
+
     private void EndRound()
     {
         state = NBackState.Cooldown;
@@ -349,123 +453,41 @@ public class NBackMinigameController : MonoBehaviour
 
         if (trialsRemaining <= 0)
         {
+            runStarted = false;
+
             if (MinigameManager.Instance != null)
                 MinigameManager.Instance.NotifyMinigameEnded();
         }
     }
 
-    private int GetPlayerInput()
+    private void GenerateSequenceAndProbe()
     {
-        if (inputMode != InputMode.Keyboard)
-            return 0;
+        int minLen = Mathf.Max(2, nBackOffset + 1);
+        sequenceLength = Mathf.Max(sequenceLength, minLen);
 
-        if (Keyboard.current == null) return 0;
+        sequence = new char[sequenceLength];
 
-        if (Keyboard.current.digit1Key.wasPressedThisFrame) return 1;
-        if (Keyboard.current.digit2Key.wasPressedThisFrame) return 2;
-
-        if (Keyboard.current.numpad1Key.wasPressedThisFrame) return 1;
-        if (Keyboard.current.numpad2Key.wasPressedThisFrame) return 2;
-
-        return 0;
-    }
-
-    private void HandleAnswer(int chosenOption)
-    {
-        bool isCorrect = (chosenOption == correctOptionIndex);
-        MinigameOutcome outcome = isCorrect ? MinigameOutcome.Correct : MinigameOutcome.Incorrect;
-
-        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
-        if (trialsDoneSoFar > trialsTotal)
-            trialsDoneSoFar = trialsTotal;
-
-        string detail =
-            $"[Trial {trialsDoneSoFar}/{trialsTotal}] NBack: sequence={new string(sequence)}, " +
-            $"correctLetter={correctLetter}, wrongLetter={wrongLetter}, playerPick={chosenOption}";
-
-        float responseTime = Time.time - currentTrialStartTime;
-
-        if (MinigameManager.Instance != null)
-        {
-            MinigameManager.Instance.RegisterResult(
-                MinigameType.NBack,
-                outcome,
-                isCorrect,
-                detail,
-                responseTime
-            );
-        }
-
-        EndRound();
-    }
-
-    private void Timeout()
-    {
-        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
-        if (trialsDoneSoFar > trialsTotal)
-            trialsDoneSoFar = trialsTotal;
-
-        string detail = $"[Trial {trialsDoneSoFar}/{trialsTotal}] NBack: sequence={new string(sequence)} (Timeout)";
-
-        float responseTime = Time.time - currentTrialStartTime;
-
-        if (MinigameManager.Instance != null)
-        {
-            MinigameManager.Instance.RegisterResult(
-                MinigameType.NBack,
-                MinigameOutcome.Timeout,
-                false,
-                detail,
-                responseTime
-            );
-        }
-
-        EndRound();
-    }
-
-    private void GenerateSequence()
-    {
-        int len = Mathf.Max(2, sequenceLength);
-        sequence = new char[len];
-
-        for (int i = 0; i < len; i++)
+        for (int i = 0; i < sequenceLength; i++)
         {
             sequence[i] = possibleLetters[Random.Range(0, possibleLetters.Length)];
         }
-    }
 
-    private void GenerateOptions()
-    {
-        int targetIndex = Mathf.Max(0, sequence.Length - 2);
-        correctLetter = sequence[targetIndex];
+        isMatchTarget = (Random.value < 0.5f);
 
-        wrongLetter = correctLetter;
-        while (wrongLetter == correctLetter)
+        int nBackIndex = sequenceLength - nBackOffset;
+        nBackIndex = Mathf.Clamp(nBackIndex, 0, sequenceLength - 1);
+
+        if (isMatchTarget)
         {
-            wrongLetter = possibleLetters[Random.Range(0, possibleLetters.Length)];
+            probeLetter = sequence[nBackIndex];
         }
-
-        correctOptionIndex = Random.Range(1, 3);
-    }
-
-    private IEnumerator PlaySequenceCoroutine()
-    {
-        if (letterText != null)
-            letterText.text = "";
-
-        for (int i = 0; i < sequence.Length; i++)
+        else
         {
-            if (letterText != null)
-                letterText.text = sequence[i].ToString();
-
-            yield return new WaitForSeconds(letterShowDuration);
-
-            if (letterText != null)
-                letterText.text = "";
-
-            yield return new WaitForSeconds(letterGapDuration);
+            probeLetter = sequence[nBackIndex];
+            while (probeLetter == sequence[nBackIndex])
+            {
+                probeLetter = possibleLetters[Random.Range(0, possibleLetters.Length)];
+            }
         }
-
-        StartAnswerPhase();
     }
 }

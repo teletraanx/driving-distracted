@@ -12,11 +12,11 @@ public class MathMinigameController : MonoBehaviour
     public TMP_Text option2Text;
 
     [Header("Speech Feedback")]
-    public TMP_Text feedbackText;   
+    public TMP_Text feedbackText;
 
     [Header("Timing")]
-    public float timeBetweenQuestions = 5f;  
-    public float questionDuration = 8f;      
+    public float timeBetweenQuestions = 1f; 
+    public float questionDuration = 8f;     
 
     private float cooldownTimer = 0f;
     private float questionTimer = 0f;
@@ -29,15 +29,14 @@ public class MathMinigameController : MonoBehaviour
     private string currentQuestion;
 
     [Header("Timeout")]
-    public bool neverTimeout = true;   
+    public bool neverTimeout = true;
 
     private int trialsRemaining = 0;
     private int trialsTotal = 0;
-    private bool runStarted = false;      
-    private float currentTrialStartTime; 
+    private bool runStarted = false;         
+    private float currentTrialStartTime;
 
     private InputMode inputMode = InputMode.Keyboard;
-
     private MicrophoneManager microphoneManager;
 
     private void Start()
@@ -52,26 +51,11 @@ public class MathMinigameController : MonoBehaviour
 
         if (MinigameManager.Instance != null)
         {
-            trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
-            trialsRemaining = trialsTotal;
-
             questionDuration = MinigameManager.Instance.globalAnswerDuration;
-
             if (questionDuration <= 0f)
-            {
                 neverTimeout = true;
-            }
-            else
-            {
-                neverTimeout = false;
-            }
 
             timeBetweenQuestions = MinigameManager.Instance.globalTrialGap;
-            cooldownTimer = timeBetweenQuestions;
-        }
-        else
-        {
-            trialsTotal = trialsRemaining = 1;
         }
 
         var cfg = RuntimeGameConfig.Instance;
@@ -79,11 +63,10 @@ public class MathMinigameController : MonoBehaviour
 
         if (inputMode == InputMode.Microphone && MicrophoneManagerSingleton.Instance != null)
         {
-            Debug.Log("[MathGame] Mic singleton found.");
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
             if (microphoneManager != null)
             {
-                Debug.Log("[MathGame] Subscribing to OnNumberRecognized and OnUnrecognizedSpeech.");
+                Debug.Log("[MathGame] Mic singleton found; subscribing for speech.");
                 microphoneManager.OnNumberRecognized += HandleNumberRecognized;
                 microphoneManager.OnUnrecognizedSpeech += HandleUnrecognizedSpeech;
             }
@@ -115,8 +98,16 @@ public class MathMinigameController : MonoBehaviour
                     MinigameManager.Instance != null &&
                     MinigameManager.Instance.CanStartMinigame(MinigameType.Math))
                 {
-                    MinigameManager.Instance.NotifyMinigameStarted(MinigameType.Math);
                     runStarted = true;
+
+                    if (MinigameManager.Instance != null)
+                    {
+                        trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
+                        trialsRemaining = trialsTotal;
+                        timeBetweenQuestions = MinigameManager.Instance.globalTrialGap;
+                    }
+
+                    MinigameManager.Instance.NotifyMinigameStarted(MinigameType.Math);
                     StartNewQuestion();
                 }
             }
@@ -137,11 +128,10 @@ public class MathMinigameController : MonoBehaviour
                 return;
             }
 
-            if (neverTimeout ||
-                MinigameManager.Instance == null ||
+            if (neverTimeout || MinigameManager.Instance == null ||
                 MinigameManager.Instance.globalAnswerDuration <= 0f)
             {
-                return; 
+                return;
             }
 
             questionTimer -= Time.deltaTime;
@@ -178,7 +168,7 @@ public class MathMinigameController : MonoBehaviour
         if (inputMode != InputMode.Microphone)
             return;
 
-        Debug.Log($"[MathGame] HandleNumberRecognized called with: {number}, questionActive={questionActive}");
+        Debug.Log($"[MathGame] HandleNumberRecognized: {number}, questionActive={questionActive}");
 
         if (questionActive && (number == 1 || number == 2))
         {
@@ -228,8 +218,7 @@ public class MathMinigameController : MonoBehaviour
         questionActive = true;
         currentTrialStartTime = Time.time;
 
-        if (!neverTimeout &&
-            MinigameManager.Instance != null &&
+        if (!neverTimeout && MinigameManager.Instance != null &&
             MinigameManager.Instance.globalAnswerDuration > 0f)
         {
             questionDuration = MinigameManager.Instance.globalAnswerDuration;
@@ -249,7 +238,6 @@ public class MathMinigameController : MonoBehaviour
     private void EndQuestion()
     {
         questionActive = false;
-        cooldownTimer = timeBetweenQuestions;
 
         if (panelRoot != null)
             panelRoot.SetActive(false);
@@ -257,16 +245,22 @@ public class MathMinigameController : MonoBehaviour
         if (feedbackText != null)
             feedbackText.enabled = false;
 
-
         trialsRemaining--;
 
-        if (trialsRemaining <= 0)
+        if (trialsRemaining > 0)
         {
-         
-            if (MinigameManager.Instance != null)
-                MinigameManager.Instance.NotifyMinigameEnded();
+            cooldownTimer = timeBetweenQuestions;
         }
+        else
+        {
+            runStarted = false;
+            cooldownTimer = timeBetweenQuestions;
 
+            if (MinigameManager.Instance != null)
+            {
+                MinigameManager.Instance.NotifyMinigameEnded();
+            }
+        }
     }
 
     private void HandleAnswer(int chosenIndex)
@@ -352,7 +346,6 @@ public class MathMinigameController : MonoBehaviour
 
         currentQuestion = $"{a} {opChar} {b} = ?";
 
-        // Decide which option is correct
         correctOptionIndex = Random.Range(1, 3);
 
         int wrongAnswer = correctAnswer;

@@ -101,6 +101,14 @@ public class StroopMinigameController : MonoBehaviour
                     MinigameManager.Instance != null &&
                     MinigameManager.Instance.CanStartMinigame(MinigameType.Stroop))
                 {
+                    if (MinigameManager.Instance != null)
+                    {
+                        trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
+                        trialsRemaining = trialsTotal;
+                        timeBetweenRounds = MinigameManager.Instance.globalTrialGap;
+                        cooldownTimer = timeBetweenRounds;
+                    }
+
                     MinigameManager.Instance.NotifyMinigameStarted(MinigameType.Stroop);
                     runStarted = true;
                     StartQuestion();
@@ -123,7 +131,6 @@ public class StroopMinigameController : MonoBehaviour
                 return;
             }
 
-
             if (neverTimeout || MinigameManager.Instance == null ||
                 MinigameManager.Instance.globalAnswerDuration <= 0f)
                 return;
@@ -135,6 +142,7 @@ public class StroopMinigameController : MonoBehaviour
             }
         }
     }
+
 
     private void HandleNumberRecognized(int number)
     {
@@ -240,11 +248,14 @@ public class StroopMinigameController : MonoBehaviour
 
         if (trialsRemaining <= 0)
         {
+            runStarted = false;
+
             if (MinigameManager.Instance != null)
                 MinigameManager.Instance.NotifyMinigameEnded();
         }
-       
+        
     }
+
 
     private void GenerateTrial()
     {

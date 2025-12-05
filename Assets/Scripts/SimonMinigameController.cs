@@ -48,13 +48,11 @@ public class SimonMinigameController : MonoBehaviour
 
     private MicrophoneManager microphoneManager;
 
-    // Trials
     private int trialsRemaining = 0;
     private int trialsTotal = 0;
     private bool runStarted = false;
     private float currentTrialStartTime;
 
-    // Input mode
     private InputMode inputMode = InputMode.Keyboard;
 
     private void Start()
@@ -90,7 +88,6 @@ public class SimonMinigameController : MonoBehaviour
 
         stateTimer = timeBetweenRounds;
 
-        // Input mode
         var cfg = RuntimeGameConfig.Instance;
         inputMode = (cfg != null) ? cfg.inputMode : InputMode.Keyboard;
 
@@ -129,7 +126,6 @@ public class SimonMinigameController : MonoBehaviour
                 break;
 
             case SimonState.ShowingSequence:
-                // driven by coroutine
                 break;
 
             case SimonState.WaitingForAnswer:
@@ -148,6 +144,13 @@ public class SimonMinigameController : MonoBehaviour
             if (MinigameManager.Instance != null &&
                 MinigameManager.Instance.CanStartMinigame(MinigameType.SimonSays))
             {
+                if (MinigameManager.Instance != null)
+                {
+                    trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
+                    trialsRemaining = trialsTotal;
+                    timeBetweenRounds = MinigameManager.Instance.globalTrialGap;
+                }
+
                 MinigameManager.Instance.NotifyMinigameStarted(MinigameType.SimonSays);
                 runStarted = true;
                 BeginStartBuffer();
@@ -155,13 +158,14 @@ public class SimonMinigameController : MonoBehaviour
         }
         else
         {
-            // between trials in this minigame
             if (trialsRemaining > 0)
             {
                 BeginStartBuffer();
             }
+
         }
     }
+
 
     private void BeginStartBuffer()
     {
@@ -259,8 +263,6 @@ public class SimonMinigameController : MonoBehaviour
             HandleAnswer(input);
             return;
         }
-
-        // mic answers via HandleNumberRecognized
 
         if (neverTimeout || MinigameManager.Instance == null ||
             MinigameManager.Instance.globalAnswerDuration <= 0f)
@@ -407,16 +409,17 @@ public class SimonMinigameController : MonoBehaviour
             sequenceCoroutine = null;
         }
 
-        // trial bookkeeping
         trialsRemaining--;
 
         if (trialsRemaining <= 0)
         {
+            runStarted = false;
+
             if (MinigameManager.Instance != null)
                 MinigameManager.Instance.NotifyMinigameEnded();
         }
-        // else: Cooldown then BeginStartBuffer again
     }
+
 
     private void GenerateSequence()
     {
