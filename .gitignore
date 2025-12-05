@@ -97,3 +97,9 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Ignore local Whisper assets (models, etc.)
+/[Aa]ssets/Whisper/
+
+# Ignore all StreamingAssets (we have another distribution path)
+/[Aa]ssets/StreamingAssets/

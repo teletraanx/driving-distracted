@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
@@ -5,26 +6,31 @@ using TMPro;
 public class MathMinigameController : MonoBehaviour
 {
     [Header("UI References")]
-    public GameObject panelRoot;         
+    public GameObject panelRoot;
     public TMP_Text questionText;
     public TMP_Text option1Text;
     public TMP_Text option2Text;
 
+    [Header("Speech Feedback")]
+    public TMP_Text feedbackText;   
+
     [Header("Timing")]
-    public float timeBetweenQuestions = 5f;  
-    public float questionDuration = 8f;      
+    public float timeBetweenQuestions = 5f;
+    public float questionDuration = 8f;
 
     private float cooldownTimer = 0f;
     private float questionTimer = 0f;
     private bool questionActive = false;
 
-    private int correctOptionIndex;      
+    private int correctOptionIndex;
     private int correctAnswer;
     private int option1Value;
     private int option2Value;
-    private string currentQuestion;    
+    private string currentQuestion;
 
-    // Microphone manager reference
+    [Header("Timeout")]
+    public bool neverTimeout = true;
+
     private MicrophoneManager microphoneManager;
 
     private void Start()
@@ -32,23 +38,39 @@ public class MathMinigameController : MonoBehaviour
         if (panelRoot != null)
             panelRoot.SetActive(false);
 
+        if (feedbackText != null)
+            feedbackText.enabled = false;
+
         cooldownTimer = timeBetweenQuestions;
-        
+
         if (MicrophoneManagerSingleton.Instance != null)
         {
-            Debug.Log("[MathGame] Starting MicrophoneManager instance...");
+            Debug.Log("[MathGame] Mic singleton found.");
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
-            microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+            if (microphoneManager != null)
+            {
+                Debug.Log("[MathGame] Subscribing to OnNumberRecognized and OnUnrecognizedSpeech.");
+                microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+                microphoneManager.OnUnrecognizedSpeech += HandleUnrecognizedSpeech;
+            }
+            else
+            {
+                Debug.LogWarning("[MathGame] MicrophoneManager from singleton is null.");
+            }
         }
-
-        
+        else
+        {
+            Debug.LogWarning("[MathGame] MicrophoneManagerSingleton.Instance is null.");
+        }
     }
 
     private void OnDestroy()
     {
-        // Clean up event subscription
         if (microphoneManager != null)
+        {
             microphoneManager.OnNumberRecognized -= HandleNumberRecognized;
+            microphoneManager.OnUnrecognizedSpeech -= HandleUnrecognizedSpeech;
+        }
     }
 
     private void Update()
@@ -62,19 +84,25 @@ public class MathMinigameController : MonoBehaviour
                 MinigameManager.Instance.CanStartMinigame(MinigameType.Math))
             {
                 MinigameManager.Instance.NotifyMinigameStarted(MinigameType.Math);
-                StartNewQuestion(); 
+                StartNewQuestion();
             }
         }
         else
         {
-            questionTimer -= Time.deltaTime;
-
             int chosenIndex = GetAnswerInput();
             if (chosenIndex != 0)
             {
                 HandleAnswer(chosenIndex);
+                return;
             }
-            else if (questionTimer <= 0f)
+
+            if (neverTimeout)
+            {
+                return;  
+            }
+
+            questionTimer -= Time.deltaTime;
+            if (questionTimer <= 0f)
             {
                 HandleTimeout();
             }
@@ -101,11 +129,43 @@ public class MathMinigameController : MonoBehaviour
 
     private void HandleNumberRecognized(int number)
     {
-        // Only process if question is active and number is valid
+        Debug.Log($"[MathGame] HandleNumberRecognized called with: {number}, questionActive={questionActive}");
+
         if (questionActive && (number == 1 || number == 2))
         {
             HandleAnswer(number);
         }
+    }
+
+    private void HandleUnrecognizedSpeech()
+    {
+        if (!questionActive)
+            return;
+
+        Debug.Log("[MathGame] Unrecognized speech while question active – prompting user to repeat.");
+        StartCoroutine(FlashFeedbackText());
+    }
+
+    private IEnumerator FlashFeedbackText()
+    {
+        if (feedbackText == null)
+            yield break;
+
+        feedbackText.text = "Say your answer again";
+        feedbackText.enabled = true;
+
+        Color originalColor = feedbackText.color;
+
+        for (int i = 0; i < 4; i++)
+        {
+            feedbackText.color = Color.red;
+            yield return new WaitForSeconds(0.2f);
+
+            feedbackText.color = originalColor;
+            yield return new WaitForSeconds(0.2f);
+        }
+
+        feedbackText.enabled = false;
     }
 
     private void StartNewQuestion()
@@ -115,6 +175,9 @@ public class MathMinigameController : MonoBehaviour
 
         if (panelRoot != null)
             panelRoot.SetActive(true);
+
+        if (feedbackText != null)
+            feedbackText.enabled = false;
 
         GenerateQuestion();
         UpdateUI();
@@ -127,6 +190,9 @@ public class MathMinigameController : MonoBehaviour
 
         if (panelRoot != null)
             panelRoot.SetActive(false);
+
+        if (feedbackText != null)
+            feedbackText.enabled = false;
 
         if (MinigameManager.Instance != null)
             MinigameManager.Instance.NotifyMinigameEnded();
@@ -172,10 +238,10 @@ public class MathMinigameController : MonoBehaviour
 
     private void GenerateQuestion()
     {
-        int a = Random.Range(1, 10); 
-        int b = Random.Range(1, 10);  
+        int a = Random.Range(1, 10);
+        int b = Random.Range(1, 10);
 
-        int op = Random.Range(0, 3);  
+        int op = Random.Range(0, 3);
         char opChar = '+';
 
         switch (op)
@@ -189,17 +255,17 @@ public class MathMinigameController : MonoBehaviour
                 correctAnswer = a - b;
                 break;
             case 2:
-                opChar = '�';
+                opChar = '*';
                 correctAnswer = a * b;
                 break;
         }
 
         currentQuestion = $"{a} {opChar} {b} = ?";
 
-        correctOptionIndex = Random.Range(1, 3); 
+        correctOptionIndex = Random.Range(1, 3);
 
         int wrongAnswer = correctAnswer;
-        int offset = Random.Range(1, 4); 
+        int offset = Random.Range(1, 4);
         if (Random.value < 0.5f)
             wrongAnswer += offset;
         else
@@ -223,9 +289,9 @@ public class MathMinigameController : MonoBehaviour
             questionText.text = currentQuestion;
 
         if (option1Text != null)
-            option1Text.text = $"Press 1: {option1Value}";
+            option1Text.text = $"Say/Press 1: {option1Value}";
 
         if (option2Text != null)
-            option2Text.text = $"Press 2: {option2Value}";
+            option2Text.text = $"Say/Press 2: {option2Value}";
     }
 }

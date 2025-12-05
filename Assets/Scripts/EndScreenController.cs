@@ -8,7 +8,7 @@ public class EndScreenController : MonoBehaviour
 {
     [Header("UI")]
     public TMP_Text resultsText;
-    public TMP_Text infoText;   
+    public TMP_Text infoText;
 
     private void Start()
     {
@@ -29,7 +29,7 @@ public class EndScreenController : MonoBehaviour
             return;
         }
 
-        var mgr = MinigameManager.Instance;  
+        var mgr = MinigameManager.Instance;
         var sb = new StringBuilder();
 
         sb.AppendLine("Run Results");
@@ -37,9 +37,15 @@ public class EndScreenController : MonoBehaviour
 
         foreach (var r in mgr.results)
         {
+            string timePart = (r.responseTimeSeconds >= 0f)
+                ? $"{r.responseTimeSeconds:0.00}s"
+                : "n/a";
+
             sb.AppendLine(
                 $"{r.type} - {r.outcome} - " +
-                $"Correct={r.wasCorrect} - {r.detail}"
+                $"Correct={r.wasCorrect} - " +
+                $"Time={timePart} - " +
+                $"{r.detail}"
             );
         }
 
@@ -83,9 +89,15 @@ public class EndScreenController : MonoBehaviour
 
             foreach (var r in mgr.results)
             {
+                string timePart = (r.responseTimeSeconds >= 0f)
+                    ? $"{r.responseTimeSeconds:0.00}s"
+                    : "n/a";
+
                 sb.AppendLine(
                     $"{r.type} - {r.outcome} - " +
-                    $"Correct={r.wasCorrect} - {r.detail}"
+                    $"Correct={r.wasCorrect} - " +
+                    $"Time={timePart} - " +
+                    $"{r.detail}"
                 );
             }
 

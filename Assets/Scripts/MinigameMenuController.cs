@@ -15,6 +15,9 @@ public class MinigameMenuController : MonoBehaviour
     public TMP_Dropdown dropdownPrefab;
     public TMP_Text warningText;
 
+    [Header("Input Mode")]
+    public TMP_Dropdown inputModeDropdown;
+
     [Header("Timing UI")]
     public TMP_InputField answerTimeInputField;
     public TMP_InputField gapTimeInputField;
@@ -55,6 +58,7 @@ public class MinigameMenuController : MonoBehaviour
         SetupCountDropdown();
         SetupTimingFields();
         InitMicrophoneDrowdown();
+        SetupInputModeDropdown();
     }
 
     private void SetupCountDropdown()
@@ -87,7 +91,7 @@ public class MinigameMenuController : MonoBehaviour
 
     private void SetupTimingFields()
     {
-        float defaultAnswer = 8f;
+        float defaultAnswer = 0f;
         float defaultGap = 5f;
 
         if (MinigameManager.Instance != null)
@@ -160,7 +164,7 @@ public class MinigameMenuController : MonoBehaviour
             return;
         }
 
-        float answerTime = 8f;
+        float answerTime = 0f;
         float gapTime = 5f;
 
         if (answerTimeInputField != null &&
@@ -179,6 +183,15 @@ public class MinigameMenuController : MonoBehaviour
 
         MinigameManager.Instance.globalAnswerDuration = answerTime;
         MinigameManager.Instance.globalMinigameGap = gapTime;
+
+        var cfg = EnsureConfig();
+        if (inputModeDropdown != null)
+        {
+            if (inputModeDropdown.value == 0)
+                cfg.inputMode = InputMode.Keyboard;
+            else
+                cfg.inputMode = InputMode.Microphone;
+        }
 
         MinigameType[] order = new MinigameType[dropdowns.Count];
 
@@ -219,7 +232,6 @@ public class MinigameMenuController : MonoBehaviour
         microphoneDropdown.AddOptions(options);
         microphoneDropdown.onValueChanged.AddListener(OnMicrophoneChanged);
 
-        // Load saved selection or default to first device
         var cfg = EnsureConfig();
         if (cfg.selectedMicrophoneIndex >= 0 && cfg.selectedMicrophoneIndex < devices.Length)
         {
@@ -258,7 +270,6 @@ public class MinigameMenuController : MonoBehaviour
         #endif
     }
 
-    // System checks for speech recognition
     void PerformSystemChecks()
     {
         if (!IsSupportedOS())
@@ -465,4 +476,46 @@ public class MinigameMenuController : MonoBehaviour
             cfg.speechRecognitionAvailable = available;
         }
     }
+
+    private void SetupInputModeDropdown()
+    {
+        if (inputModeDropdown == null)
+            return;
+
+        inputModeDropdown.ClearOptions();
+        var options = new List<TMP_Dropdown.OptionData>
+        {
+        new TMP_Dropdown.OptionData("Keyboard"),
+        new TMP_Dropdown.OptionData("Microphone")
+        };
+        inputModeDropdown.AddOptions(options);
+
+        var cfg = EnsureConfig();
+        int index = (cfg.inputMode == InputMode.Microphone) ? 1 : 0;
+        inputModeDropdown.SetValueWithoutNotify(index);
+        inputModeDropdown.RefreshShownValue();
+    }
+
+    private void InitInputModeDropdown(RuntimeGameConfig cfg)
+    {
+        if (inputModeDropdown == null) return;
+
+        inputModeDropdown.ClearOptions();
+        inputModeDropdown.AddOptions(new System.Collections.Generic.List<string>
+        {
+        "Keyboard",
+        "Microphone"
+        });
+
+        int idx = (cfg.inputMode == InputMode.Microphone) ? 1 : 0;
+        inputModeDropdown.SetValueWithoutNotify(idx);
+        inputModeDropdown.onValueChanged.AddListener(OnInputModeChanged);
+    }
+
+    private void OnInputModeChanged(int index)
+    {
+        var cfg = EnsureConfig();
+        cfg.inputMode = (index == 1) ? InputMode.Microphone : InputMode.Keyboard;
+    }
+
 }

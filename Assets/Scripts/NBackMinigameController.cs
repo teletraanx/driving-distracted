@@ -1,3 +1,4 @@
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
@@ -14,21 +15,27 @@ public class NBackMinigameController : MonoBehaviour
 
     [Header("UI")]
     public GameObject panelRoot;
-    public TMP_Text phaseText;      
-    public TMP_Text letterText;      
-    public TMP_Text instructionText; 
-    public TMP_Text option1Text;     
-    public TMP_Text option2Text;     
+    public TMP_Text phaseText;
+    public TMP_Text letterText;
+    public TMP_Text instructionText;
+    public TMP_Text option1Text;
+    public TMP_Text option2Text;
+
+    [Header("Speech Feedback")]
+    public TMP_Text feedbackText;   
 
     [Header("Timing")]
-    public float timeBetweenRounds = 0f;   
-    public float startBufferTime = 3f;     
+    public float timeBetweenRounds = 0f;
+    public float startBufferTime = 3f;
     public float letterShowDuration = 1f;
     public float letterGapDuration = 0.5f;
     public float answerDuration = 8f;
 
     [Header("Sequence Settings")]
-    public int sequenceLength = 3;         
+    public int sequenceLength = 3;
+
+    [Header("Timeout")]
+    public bool neverTimeout = true;  
 
     private NBackState state = NBackState.Cooldown;
     private float stateTimer = 0f;
@@ -36,13 +43,12 @@ public class NBackMinigameController : MonoBehaviour
     private char[] sequence;
     private char correctLetter;
     private char wrongLetter;
-    private int correctOptionIndex; 
+    private int correctOptionIndex;
 
     private char[] possibleLetters = { 'A', 'B', 'C', 'D' };
 
     private Coroutine sequenceCoroutine;
-    
-    // Microphone manager reference
+
     private MicrophoneManager microphoneManager;
 
     private void Start()
@@ -50,21 +56,38 @@ public class NBackMinigameController : MonoBehaviour
         if (panelRoot != null)
             panelRoot.SetActive(false);
 
+        if (feedbackText != null)
+            feedbackText.enabled = false;
+
         state = NBackState.Cooldown;
         stateTimer = timeBetweenRounds;
-        
+
+        if (MinigameManager.Instance != null)
+        {
+            answerDuration = MinigameManager.Instance.globalAnswerDuration;
+
+            if (answerDuration <= 0f)
+                neverTimeout = true;
+        }
+
         if (MicrophoneManagerSingleton.Instance != null)
         {
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
-            microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+            if (microphoneManager != null)
+            {
+                microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+                microphoneManager.OnUnrecognizedSpeech += HandleUnrecognizedSpeech;
+            }
         }
     }
 
     private void OnDestroy()
     {
-        // Clean up event subscription
         if (microphoneManager != null)
+        {
             microphoneManager.OnNumberRecognized -= HandleNumberRecognized;
+            microphoneManager.OnUnrecognizedSpeech -= HandleUnrecognizedSpeech;
+        }
     }
 
     private void Update()
@@ -89,7 +112,6 @@ public class NBackMinigameController : MonoBehaviour
                 break;
         }
     }
-
 
     private void HandleCooldown()
     {
@@ -121,6 +143,9 @@ public class NBackMinigameController : MonoBehaviour
 
         if (option1Text != null) option1Text.text = "";
         if (option2Text != null) option2Text.text = "";
+
+        if (feedbackText != null)
+            feedbackText.enabled = false;
     }
 
     private void HandleStartBuffer()
@@ -142,7 +167,7 @@ public class NBackMinigameController : MonoBehaviour
         stateTimer = 0f;
 
         GenerateSequence();
-        GenerateOptions(); 
+        GenerateOptions();
 
         if (phaseText != null)
             phaseText.text = "WATCH THE ORDER";
@@ -152,6 +177,9 @@ public class NBackMinigameController : MonoBehaviour
 
         if (option1Text != null) option1Text.text = "";
         if (option2Text != null) option2Text.text = "";
+
+        if (feedbackText != null)
+            feedbackText.enabled = false;
 
         if (sequenceCoroutine != null)
             StopCoroutine(sequenceCoroutine);
@@ -170,21 +198,24 @@ public class NBackMinigameController : MonoBehaviour
             instructionText.text = "Which letter came BEFORE the last one?";
 
         if (letterText != null)
-            letterText.text = ""; 
+            letterText.text = "";
+
+        if (feedbackText != null)
+            feedbackText.enabled = false;
 
         if (correctOptionIndex == 1)
         {
             if (option1Text != null)
-                option1Text.text = $"Press 1: {correctLetter}";
+                option1Text.text = $"Say/Press 1: {correctLetter}";
             if (option2Text != null)
-                option2Text.text = $"Press 2: {wrongLetter}";
+                option2Text.text = $"Say/Press 2: {wrongLetter}";
         }
         else
         {
             if (option1Text != null)
-                option1Text.text = $"Press 1: {wrongLetter}";
+                option1Text.text = $"Say/Press 1: {wrongLetter}";
             if (option2Text != null)
-                option2Text.text = $"Press 2: {correctLetter}";
+                option2Text.text = $"Say/Press 2: {correctLetter}";
         }
     }
 
@@ -197,6 +228,10 @@ public class NBackMinigameController : MonoBehaviour
             return;
         }
 
+        if (neverTimeout)
+            return;
+
+        stateTimer -= Time.deltaTime;
         if (stateTimer <= 0f)
         {
             Timeout();
@@ -205,11 +240,43 @@ public class NBackMinigameController : MonoBehaviour
 
     private void HandleNumberRecognized(int number)
     {
-        // Only process if we're in the answer waiting state and number is valid
+        Debug.Log($"[NBackGame] HandleNumberRecognized called with: {number}, state={state}");
+
         if (state == NBackState.WaitingForAnswer && (number == 1 || number == 2))
         {
             HandleAnswer(number);
         }
+    }
+
+    private void HandleUnrecognizedSpeech()
+    {
+        if (state != NBackState.WaitingForAnswer)
+            return;
+
+        Debug.Log("[NBackGame] Unrecognized speech during answer – prompting repeat.");
+        StartCoroutine(FlashFeedbackText());
+    }
+
+    private IEnumerator FlashFeedbackText()
+    {
+        if (feedbackText == null)
+            yield break;
+
+        feedbackText.text = "Say your answer again";
+        feedbackText.enabled = true;
+
+        Color original = feedbackText.color;
+
+        for (int i = 0; i < 4; i++)
+        {
+            feedbackText.color = Color.red;
+            yield return new WaitForSeconds(0.2f);
+
+            feedbackText.color = original;
+            yield return new WaitForSeconds(0.2f);
+        }
+
+        feedbackText.enabled = false;
     }
 
     private void EndRound()
@@ -226,6 +293,9 @@ public class NBackMinigameController : MonoBehaviour
         if (option1Text != null) option1Text.text = "";
         if (option2Text != null) option2Text.text = "";
 
+        if (feedbackText != null)
+            feedbackText.enabled = false;
+
         if (sequenceCoroutine != null)
         {
             StopCoroutine(sequenceCoroutine);
@@ -235,7 +305,6 @@ public class NBackMinigameController : MonoBehaviour
         if (MinigameManager.Instance != null)
             MinigameManager.Instance.NotifyMinigameEnded();
     }
-
 
     private int GetPlayerInput()
     {
@@ -253,7 +322,6 @@ public class NBackMinigameController : MonoBehaviour
     private void HandleAnswer(int chosenOption)
     {
         bool isCorrect = (chosenOption == correctOptionIndex);
-
         MinigameOutcome outcome = isCorrect ? MinigameOutcome.Correct : MinigameOutcome.Incorrect;
 
         string detail =
@@ -290,10 +358,9 @@ public class NBackMinigameController : MonoBehaviour
         EndRound();
     }
 
-
     private void GenerateSequence()
     {
-        int len = Mathf.Max(2, sequenceLength); 
+        int len = Mathf.Max(2, sequenceLength);
         sequence = new char[len];
 
         for (int i = 0; i < len; i++)
@@ -313,10 +380,10 @@ public class NBackMinigameController : MonoBehaviour
             wrongLetter = possibleLetters[Random.Range(0, possibleLetters.Length)];
         }
 
-        correctOptionIndex = Random.Range(1, 3); 
+        correctOptionIndex = Random.Range(1, 3);
     }
 
-    private System.Collections.IEnumerator PlaySequenceCoroutine()
+    private IEnumerator PlaySequenceCoroutine()
     {
         if (letterText != null)
             letterText.text = "";

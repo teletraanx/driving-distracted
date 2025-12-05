@@ -24,6 +24,7 @@ public class MinigameResult
     public MinigameOutcome outcome;
     public string detail;
     public bool wasCorrect;
+    public float responseTimeSeconds = -1f;
 }
 
 [System.Serializable]
@@ -36,6 +37,8 @@ public class MinigameCollisionStats
 public class MinigameManager : MonoBehaviour
 {
     public static MinigameManager Instance { get; private set; }
+
+    private float currentMinigameStartTime = -1f;
 
     [Header("Results (debug)")]
     public List<MinigameResult> results = new List<MinigameResult>();
@@ -113,16 +116,32 @@ public class MinigameManager : MonoBehaviour
         bool wasCorrect,
         string detail)
     {
+        float responseTime = -1f;
+
+        if (currentMinigameStartTime > 0f)
+            responseTime = Time.time - currentMinigameStartTime;
+
+        RegisterResult(type, outcome, wasCorrect, detail, responseTime);
+    }
+
+    public void RegisterResult(
+        MinigameType type,
+        MinigameOutcome outcome,
+        bool wasCorrect,
+        string detail,
+        float responseTimeSeconds)
+    {
         var r = new MinigameResult
         {
             type = type,
             outcome = outcome,
             wasCorrect = wasCorrect,
-            detail = detail
+            detail = detail,
+            responseTimeSeconds = responseTimeSeconds
         };
 
         results.Add(r);
-        Debug.Log($"[Minigame] {type} - {outcome} - {detail}");
+        Debug.Log($"[Minigame] {type} - {outcome} - {detail} (time={responseTimeSeconds:0.00}s)");
     }
 
     public bool CanStartMinigame(MinigameType requester)
@@ -146,12 +165,15 @@ public class MinigameManager : MonoBehaviour
         isMinigameActive = true;
         hasActiveMinigame = true;
         activeMinigameType = type;
+        currentMinigameStartTime = Time.time;
     }
 
     public void NotifyMinigameEnded()
     {
         isMinigameActive = false;
         hasActiveMinigame = false;
+
+        currentMinigameStartTime = -1f;
 
         nextAllowedStartTime = Time.time + globalMinigameGap;
 
@@ -168,15 +190,6 @@ public class MinigameManager : MonoBehaviour
             runFinishedTime = Time.time;
             Debug.Log("[Minigame] Run finished. Going to end screen...");
 
-            // Stop speech recognition when minigame sequence ends (NOT WORKING)
-            /*if (MicrophoneManagerSingleton.Instance != null)
-            {
-                var microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
-                if (microphoneManager != null)
-                {
-                    microphoneManager.StopMicrophoneStreaming();
-                }
-            }*/
         }
     }
 

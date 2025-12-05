@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
@@ -8,7 +9,7 @@ public class SimonMinigameController : MonoBehaviour
     private enum SimonState
     {
         Cooldown,
-        StartBuffer,     
+        StartBuffer,
         ShowingSequence,
         WaitingForAnswer
     }
@@ -20,9 +21,12 @@ public class SimonMinigameController : MonoBehaviour
     public TMP_Text option1Text;
     public TMP_Text option2Text;
 
+    [Header("Speech Feedback")]
+    public TMP_Text feedbackText;   
+
     [Header("Timing")]
     public float timeBetweenRounds = 0f;
-    public float startBufferTime = 3f;       
+    public float startBufferTime = 3f;
     public float colorShowDuration = 0.6f;
     public float colorGapDuration = 0.2f;
     public float answerDuration = 8f;
@@ -40,7 +44,8 @@ public class SimonMinigameController : MonoBehaviour
 
     private Coroutine sequenceCoroutine;
 
-    // Microphone manager reference
+    public bool neverTimeout = true;
+
     private MicrophoneManager microphoneManager;
 
     private void Start()
@@ -51,22 +56,38 @@ public class SimonMinigameController : MonoBehaviour
         if (colorDisplay != null)
             colorDisplay.color = Color.black;
 
+        if (feedbackText != null)
+            feedbackText.enabled = false;
+
         state = SimonState.Cooldown;
         stateTimer = timeBetweenRounds;
-        
-        // Get reference from singleton
+
+        if (MinigameManager.Instance != null)
+        {
+            answerDuration = MinigameManager.Instance.globalAnswerDuration;
+
+            if (answerDuration <= 0f)
+                neverTimeout = true;
+        }
+
         if (MicrophoneManagerSingleton.Instance != null)
         {
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
-            microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+            if (microphoneManager != null)
+            {
+                microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+                microphoneManager.OnUnrecognizedSpeech += HandleUnrecognizedSpeech;
+            }
         }
     }
 
     private void OnDestroy()
     {
-        // Clean up event subscription
         if (microphoneManager != null)
+        {
             microphoneManager.OnNumberRecognized -= HandleNumberRecognized;
+            microphoneManager.OnUnrecognizedSpeech -= HandleUnrecognizedSpeech;
+        }
     }
 
     private void Update()
@@ -84,7 +105,7 @@ public class SimonMinigameController : MonoBehaviour
                 break;
 
             case SimonState.ShowingSequence:
-                break; 
+                break;
 
             case SimonState.WaitingForAnswer:
                 HandleWaitingForAnswer();
@@ -118,6 +139,9 @@ public class SimonMinigameController : MonoBehaviour
         option2Text.text = "";
 
         colorDisplay.color = Color.black;
+
+        if (feedbackText != null)
+            feedbackText.enabled = false;
     }
 
     private void HandleStartBuffer()
@@ -148,6 +172,9 @@ public class SimonMinigameController : MonoBehaviour
         option2Text.text = "";
         colorDisplay.color = Color.black;
 
+        if (feedbackText != null)
+            feedbackText.enabled = false;
+
         if (sequenceCoroutine != null)
             StopCoroutine(sequenceCoroutine);
         sequenceCoroutine = StartCoroutine(PlaySequenceCoroutine());
@@ -161,15 +188,18 @@ public class SimonMinigameController : MonoBehaviour
         if (phaseText != null)
             phaseText.text = "NOW ANSWER";
 
+        if (feedbackText != null)
+            feedbackText.enabled = false;
+
         if (correctOptionIndex == 1)
         {
-            option1Text.text = $"Press 1: {correctSequenceStr}";
-            option2Text.text = $"Press 2: {wrongSequenceStr}";
+            option1Text.text = $"Say/Press 1: {correctSequenceStr}";
+            option2Text.text = $"Say/Press 2: {wrongSequenceStr}";
         }
         else
         {
-            option1Text.text = $"Press 1: {wrongSequenceStr}";
-            option2Text.text = $"Press 2: {correctSequenceStr}";
+            option1Text.text = $"Say/Press 1: {wrongSequenceStr}";
+            option2Text.text = $"Say/Press 2: {correctSequenceStr}";
         }
     }
 
@@ -182,6 +212,12 @@ public class SimonMinigameController : MonoBehaviour
             return;
         }
 
+        if (neverTimeout)
+        {
+            return;
+        }
+
+        stateTimer -= Time.deltaTime;
         if (stateTimer <= 0f)
         {
             Timeout();
@@ -190,11 +226,43 @@ public class SimonMinigameController : MonoBehaviour
 
     private void HandleNumberRecognized(int number)
     {
-        // Only process if we're in the answer waiting state and number is valid
+        Debug.Log($"[SimonGame] HandleNumberRecognized called with: {number}, state={state}");
+
         if (state == SimonState.WaitingForAnswer && (number == 1 || number == 2))
         {
             HandleAnswer(number);
         }
+    }
+
+    private void HandleUnrecognizedSpeech()
+    {
+        if (state != SimonState.WaitingForAnswer)
+            return;
+
+        Debug.Log("[SimonGame] Unrecognized speech during answer phase – prompting repeat.");
+        StartCoroutine(FlashFeedbackText());
+    }
+
+    private IEnumerator FlashFeedbackText()
+    {
+        if (feedbackText == null)
+            yield break;
+
+        feedbackText.text = "Say your answer again";
+        feedbackText.enabled = true;
+
+        Color original = feedbackText.color;
+
+        for (int i = 0; i < 4; i++)
+        {
+            feedbackText.color = Color.red;
+            yield return new WaitForSeconds(0.2f);
+
+            feedbackText.color = original;
+            yield return new WaitForSeconds(0.2f);
+        }
+
+        feedbackText.enabled = false;
     }
 
     private int GetPlayerInput()
@@ -251,6 +319,9 @@ public class SimonMinigameController : MonoBehaviour
 
         colorDisplay.color = Color.black;
 
+        if (feedbackText != null)
+            feedbackText.enabled = false;
+
         if (sequenceCoroutine != null)
         {
             StopCoroutine(sequenceCoroutine);
@@ -260,15 +331,14 @@ public class SimonMinigameController : MonoBehaviour
         MinigameManager.Instance.NotifyMinigameEnded();
     }
 
-
     private void GenerateSequence()
     {
-        int len = 3;              
+        int len = 3;
         sequence = new int[len];
 
         for (int i = 0; i < len; i++)
         {
-            sequence[i] = Random.Range(0, 3);   
+            sequence[i] = Random.Range(0, 3);
         }
 
         correctSequenceStr = SequenceToString(sequence);
@@ -281,7 +351,7 @@ public class SimonMinigameController : MonoBehaviour
         int indexToChange = Random.Range(0, wrong.Length);
 
         int original = wrong[indexToChange];
-        int newVal = Random.Range(0, 3);  
+        int newVal = Random.Range(0, 3);
 
         if (newVal == original)
         {
@@ -292,7 +362,7 @@ public class SimonMinigameController : MonoBehaviour
 
         wrongSequenceStr = SequenceToString(wrong);
 
-        correctOptionIndex = Random.Range(1, 3); 
+        correctOptionIndex = Random.Range(1, 3);
     }
 
     private string SequenceToString(int[] seq)

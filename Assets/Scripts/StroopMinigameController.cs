@@ -1,3 +1,4 @@
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
@@ -9,9 +10,12 @@ public class StroopMinigameController : MonoBehaviour
     public TMP_Text wordText;
     public TMP_Text instructionText;
 
+    [Header("Speech Feedback")]
+    public TMP_Text feedbackText;   
+
     [Header("Timing")]
-    public float timeBetweenRounds = 0f;  
-    public float questionDuration = 8f;  
+    public float timeBetweenRounds = 0f;
+    public float questionDuration = 8f;
 
     private float cooldownTimer = 0f;
     private float questionTimer = 0f;
@@ -22,9 +26,10 @@ public class StroopMinigameController : MonoBehaviour
 
     private int meaningIndex;
     private int colorIndex;
-    private bool isMatch; 
+    private bool isMatch;
 
-    // Microphone manager reference
+    public bool neverTimeout = true;
+
     private MicrophoneManager microphoneManager;
 
     private void Start()
@@ -33,20 +38,30 @@ public class StroopMinigameController : MonoBehaviour
             panelRoot.SetActive(false);
 
         cooldownTimer = timeBetweenRounds;
-        
-        // Get reference from singleton
+
+        if (MinigameManager.Instance != null)
+        {
+            questionDuration = MinigameManager.Instance.globalAnswerDuration;
+
+            if (questionDuration <= 0f)
+                neverTimeout = true;
+        }
+
         if (MicrophoneManagerSingleton.Instance != null)
         {
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
-            microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+            if (microphoneManager != null)
+                microphoneManager.OnNumberRecognized += HandleNumberRecognized;
         }
     }
 
     private void OnDestroy()
     {
-        // Clean up event subscription
         if (microphoneManager != null)
+        {
             microphoneManager.OnNumberRecognized -= HandleNumberRecognized;
+            microphoneManager.OnUnrecognizedSpeech -= HandleUnrecognizedSpeech;
+        }
     }
 
     private void Update()
@@ -65,8 +80,6 @@ public class StroopMinigameController : MonoBehaviour
         }
         else
         {
-            questionTimer -= Time.deltaTime;
-
             int input = GetPlayerInput();
             if (input != 0)
             {
@@ -74,6 +87,10 @@ public class StroopMinigameController : MonoBehaviour
                 return;
             }
 
+            if (neverTimeout)
+                return;
+
+            questionTimer -= Time.deltaTime;
             if (questionTimer <= 0f)
             {
                 Timeout();
@@ -83,11 +100,43 @@ public class StroopMinigameController : MonoBehaviour
 
     private void HandleNumberRecognized(int number)
     {
-        // Only process if we're in the question active state and number is valid
+        Debug.Log($"[StroopGame] HandleNumberRecognized called with: {number}, questionActive={questionActive}");
+
         if (questionActive && (number == 1 || number == 2))
         {
             HandleAnswer(number);
         }
+    }
+
+    private void HandleUnrecognizedSpeech()
+    {
+        if (!questionActive)
+            return;
+
+        Debug.Log("[StroopGame] Unrecognized speech during question – prompting repeat.");
+        StartCoroutine(FlashFeedbackText());
+    }
+
+    private IEnumerator FlashFeedbackText()
+    {
+        if (feedbackText == null)
+            yield break;
+
+        feedbackText.text = "Say your answer again";
+        feedbackText.enabled = true;
+
+        Color original = feedbackText.color;
+
+        for (int i = 0; i < 4; i++)
+        {
+            feedbackText.color = Color.red;
+            yield return new WaitForSeconds(0.2f);
+
+            feedbackText.color = original;
+            yield return new WaitForSeconds(0.2f);
+        }
+
+        feedbackText.enabled = false;
     }
 
     private int GetPlayerInput()
@@ -111,6 +160,9 @@ public class StroopMinigameController : MonoBehaviour
         if (panelRoot != null)
             panelRoot.SetActive(true);
 
+        if (feedbackText != null)
+            feedbackText.enabled = false;
+
         GenerateTrial();
         UpdateUI();
     }
@@ -122,6 +174,9 @@ public class StroopMinigameController : MonoBehaviour
 
         if (panelRoot != null)
             panelRoot.SetActive(false);
+
+        if (feedbackText != null)
+            feedbackText.enabled = false;
 
         if (MinigameManager.Instance != null)
             MinigameManager.Instance.NotifyMinigameEnded();
@@ -157,7 +212,7 @@ public class StroopMinigameController : MonoBehaviour
 
         if (instructionText != null)
         {
-            instructionText.text = "Does the WORD match the COLOR?\nPress 1 = YES\nPress 2 = NO";
+            instructionText.text = "Does the WORD match the COLOR?\nSay/Press 1 = YES\nSay/Press 2 = NO";
         }
     }
 
