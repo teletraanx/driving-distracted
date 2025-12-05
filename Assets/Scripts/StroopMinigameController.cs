@@ -32,13 +32,11 @@ public class StroopMinigameController : MonoBehaviour
 
     private MicrophoneManager microphoneManager;
 
-    // Trials
     private int trialsRemaining = 0;
     private int trialsTotal = 0;
     private bool runStarted = false;
     private float currentTrialStartTime;
 
-    // Input mode
     private InputMode inputMode = InputMode.Keyboard;
 
     private void Start()
@@ -68,11 +66,9 @@ public class StroopMinigameController : MonoBehaviour
             trialsTotal = trialsRemaining = 1;
         }
 
-        // Input mode
         var cfg = RuntimeGameConfig.Instance;
         inputMode = (cfg != null) ? cfg.inputMode : InputMode.Keyboard;
 
-        // Mic subscription only if microphone mode
         if (inputMode == InputMode.Microphone && MicrophoneManagerSingleton.Instance != null)
         {
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
@@ -127,7 +123,6 @@ public class StroopMinigameController : MonoBehaviour
                 return;
             }
 
-            // mic answers handled via HandleNumberRecognized
 
             if (neverTimeout || MinigameManager.Instance == null ||
                 MinigameManager.Instance.globalAnswerDuration <= 0f)
@@ -241,7 +236,6 @@ public class StroopMinigameController : MonoBehaviour
         if (feedbackText != null)
             feedbackText.enabled = false;
 
-        // trial bookkeeping
         trialsRemaining--;
 
         if (trialsRemaining <= 0)
@@ -249,7 +243,7 @@ public class StroopMinigameController : MonoBehaviour
             if (MinigameManager.Instance != null)
                 MinigameManager.Instance.NotifyMinigameEnded();
         }
-        // else: wait in cooldown, then StartQuestion again
+       
     }
 
     private void GenerateTrial()

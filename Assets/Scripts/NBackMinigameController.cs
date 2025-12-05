@@ -51,13 +51,11 @@ public class NBackMinigameController : MonoBehaviour
 
     private MicrophoneManager microphoneManager;
 
-    // Trials
     private int trialsRemaining = 0;
     private int trialsTotal = 0;
     private bool runStarted = false;
     private float currentTrialStartTime;
 
-    // Input mode
     private InputMode inputMode = InputMode.Keyboard;
 
     private void Start()
@@ -70,7 +68,6 @@ public class NBackMinigameController : MonoBehaviour
 
         state = NBackState.Cooldown;
 
-        // Global settings
         if (MinigameManager.Instance != null)
         {
             answerDuration = MinigameManager.Instance.globalAnswerDuration;
@@ -90,11 +87,9 @@ public class NBackMinigameController : MonoBehaviour
 
         stateTimer = timeBetweenRounds;
 
-        // Input mode from config
         var cfg = RuntimeGameConfig.Instance;
         inputMode = (cfg != null) ? cfg.inputMode : InputMode.Keyboard;
 
-        // Mic subscription only if in microphone mode
         if (inputMode == InputMode.Microphone && MicrophoneManagerSingleton.Instance != null)
         {
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
@@ -130,7 +125,6 @@ public class NBackMinigameController : MonoBehaviour
                 break;
 
             case NBackState.ShowingSequence:
-                // sequence coroutine drives this state
                 break;
 
             case NBackState.WaitingForAnswer:
@@ -156,7 +150,6 @@ public class NBackMinigameController : MonoBehaviour
         }
         else
         {
-            // We are in the middle of this minigame's block, between trials
             if (trialsRemaining > 0)
             {
                 BeginStartBuffer();
@@ -231,7 +224,6 @@ public class NBackMinigameController : MonoBehaviour
         state = NBackState.WaitingForAnswer;
         stateTimer = answerDuration;
 
-        // mark trial start (for response time)
         currentTrialStartTime = Time.time;
 
         if (phaseText != null)
@@ -271,7 +263,6 @@ public class NBackMinigameController : MonoBehaviour
             return;
         }
 
-        // mic answers come via HandleNumberRecognized
 
         if (neverTimeout || MinigameManager.Instance == null ||
             MinigameManager.Instance.globalAnswerDuration <= 0f)
@@ -354,7 +345,6 @@ public class NBackMinigameController : MonoBehaviour
             sequenceCoroutine = null;
         }
 
-        // trial bookkeeping
         trialsRemaining--;
 
         if (trialsRemaining <= 0)
@@ -362,7 +352,6 @@ public class NBackMinigameController : MonoBehaviour
             if (MinigameManager.Instance != null)
                 MinigameManager.Instance.NotifyMinigameEnded();
         }
-        // else: stay in Cooldown, HandleCooldown will start next trial
     }
 
     private int GetPlayerInput()

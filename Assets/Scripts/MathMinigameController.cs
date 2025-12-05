@@ -12,11 +12,11 @@ public class MathMinigameController : MonoBehaviour
     public TMP_Text option2Text;
 
     [Header("Speech Feedback")]
-    public TMP_Text feedbackText;   // "Say your answer again"
+    public TMP_Text feedbackText;   
 
     [Header("Timing")]
-    public float timeBetweenQuestions = 5f;  // gap between trials of THIS minigame
-    public float questionDuration = 8f;      // per-trial answer time (overridden by global)
+    public float timeBetweenQuestions = 5f;  
+    public float questionDuration = 8f;      
 
     private float cooldownTimer = 0f;
     private float questionTimer = 0f;
@@ -29,18 +29,15 @@ public class MathMinigameController : MonoBehaviour
     private string currentQuestion;
 
     [Header("Timeout")]
-    public bool neverTimeout = true;   // if true, no timeout – only correct/incorrect
+    public bool neverTimeout = true;   
 
-    // Trials for this minigame
     private int trialsRemaining = 0;
     private int trialsTotal = 0;
-    private bool runStarted = false;      // this minigame has begun its block
-    private float currentTrialStartTime;  // for response-time measurement
+    private bool runStarted = false;      
+    private float currentTrialStartTime; 
 
-    // Input mode
     private InputMode inputMode = InputMode.Keyboard;
 
-    // Mic
     private MicrophoneManager microphoneManager;
 
     private void Start()
@@ -53,14 +50,11 @@ public class MathMinigameController : MonoBehaviour
 
         cooldownTimer = timeBetweenQuestions;
 
-        // Trials: how many questions this minigame will ask
         if (MinigameManager.Instance != null)
         {
-            // pull global per-minigame trial count
             trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
             trialsRemaining = trialsTotal;
 
-            // pull global answer duration
             questionDuration = MinigameManager.Instance.globalAnswerDuration;
 
             if (questionDuration <= 0f)
@@ -80,11 +74,9 @@ public class MathMinigameController : MonoBehaviour
             trialsTotal = trialsRemaining = 1;
         }
 
-        // Input mode from config
         var cfg = RuntimeGameConfig.Instance;
         inputMode = cfg != null ? cfg.inputMode : InputMode.Keyboard;
 
-        // Only hook mic if we’re in microphone mode
         if (inputMode == InputMode.Microphone && MicrophoneManagerSingleton.Instance != null)
         {
             Debug.Log("[MathGame] Mic singleton found.");
@@ -115,12 +107,10 @@ public class MathMinigameController : MonoBehaviour
     {
         if (!questionActive)
         {
-            // Between trials
             cooldownTimer -= Time.deltaTime;
 
             if (!runStarted)
             {
-                // First time this minigame is allowed to start
                 if (cooldownTimer <= 0f &&
                     MinigameManager.Instance != null &&
                     MinigameManager.Instance.CanStartMinigame(MinigameType.Math))
@@ -132,7 +122,6 @@ public class MathMinigameController : MonoBehaviour
             }
             else
             {
-                // We are in this minigame’s block; handle subsequent trials
                 if (cooldownTimer <= 0f && trialsRemaining > 0)
                 {
                     StartNewQuestion();
@@ -141,9 +130,6 @@ public class MathMinigameController : MonoBehaviour
         }
         else
         {
-            // Question is active – watch for input
-
-            // 1) Keyboard input (if in keyboard mode)
             int chosenIndex = GetAnswerInput();
             if (chosenIndex != 0)
             {
@@ -151,14 +137,11 @@ public class MathMinigameController : MonoBehaviour
                 return;
             }
 
-            // 2) Mic answers come in via HandleNumberRecognized
-
-            // 3) Timeout logic (only if globally configured)
             if (neverTimeout ||
                 MinigameManager.Instance == null ||
                 MinigameManager.Instance.globalAnswerDuration <= 0f)
             {
-                return; // no timeout
+                return; 
             }
 
             questionTimer -= Time.deltaTime;
@@ -171,7 +154,6 @@ public class MathMinigameController : MonoBehaviour
 
     private int GetAnswerInput()
     {
-        // Only read keyboard in keyboard mode
         if (inputMode != InputMode.Keyboard)
             return 0;
 
@@ -246,7 +228,6 @@ public class MathMinigameController : MonoBehaviour
         questionActive = true;
         currentTrialStartTime = Time.time;
 
-        // Set timer only if we actually want timeouts
         if (!neverTimeout &&
             MinigameManager.Instance != null &&
             MinigameManager.Instance.globalAnswerDuration > 0f)
@@ -267,7 +248,6 @@ public class MathMinigameController : MonoBehaviour
 
     private void EndQuestion()
     {
-        // End this trial
         questionActive = false;
         cooldownTimer = timeBetweenQuestions;
 
@@ -277,16 +257,16 @@ public class MathMinigameController : MonoBehaviour
         if (feedbackText != null)
             feedbackText.enabled = false;
 
-        // Bookkeeping for trials
+
         trialsRemaining--;
 
         if (trialsRemaining <= 0)
         {
-            // Done with this minigame
+         
             if (MinigameManager.Instance != null)
                 MinigameManager.Instance.NotifyMinigameEnded();
         }
-        // else: Update() will wait for cooldown and then StartNewQuestion()
+
     }
 
     private void HandleAnswer(int chosenIndex)

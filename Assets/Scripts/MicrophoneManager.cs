@@ -20,7 +20,6 @@ public class MicrophoneManager : MonoBehaviour
     public event Action<int> OnNumberRecognized;
     public event Action OnUnrecognizedSpeech;
 
-    // ── FFmpeg args ─────────────────────────────────────────────────────
     private string ffmpegWindowsArguments =
         "-f s16le -ar 48000 -ac 2 -i - " +
         "-vn -af \"whisper=model=Whisper/ggml-medium.en.bin:language=en:queue=3:destination=-:format=json\" " +
@@ -39,16 +38,15 @@ public class MicrophoneManager : MonoBehaviour
     private const int chunkSamples = 1024;
 
     [Header("Mic Debug")]
-    public float currentLevel = 0f;        // RMS of latest chunk
-    public float lastWhisperTime = -1f;    // Time.time of last recognized Whisper line
-    public string lastWhisperText = "";    // Last text Whisper produced
+    public float currentLevel = 0f;        
+    public float lastWhisperTime = -1f;    
+    public string lastWhisperText = "";    
 
     public bool IsStreaming => isStreaming;
 
 
     private void Start()
     {
-        // Decide FFmpeg arguments based on OS
         UnityEngine.Debug.Log(SystemInfo.operatingSystem);
         if (SystemInfo.operatingSystem.Contains("Linux"))
         {
@@ -61,7 +59,6 @@ public class MicrophoneManager : MonoBehaviour
             ffmpegArguments = ffmpegWindowsArguments;
         }
 
-        // Always initialize mic + pipeline once.
         InitializeAudioCapture();
         StartMicrophoneStreaming();
         UnityEngine.Debug.Log("[Mic] MicrophoneManager initialized and streaming started.");
@@ -115,10 +112,6 @@ public class MicrophoneManager : MonoBehaviour
         StopStreaming();
     }
 
-    // ─────────────────────────────────────────────────────────────
-    //  PUBLIC: pipeline is always started in Start(), but we keep
-    //  this in case you ever want to restart.
-    // ─────────────────────────────────────────────────────────────
     public void StartMicrophoneStreaming()
     {
         if (isStreaming)
@@ -135,9 +128,6 @@ public class MicrophoneManager : MonoBehaviour
         StopStreaming();
     }
 
-    // ─────────────────────────────────────────────────────────────
-    //  Async pipeline startup
-    // ─────────────────────────────────────────────────────────────
     private async Task StartStreaming()
     {
         if (isStreaming)
@@ -300,7 +290,6 @@ public class MicrophoneManager : MonoBehaviour
 
             string trimmed = data.Trim();
 
-            // Expect JSON lines from whisper: {"start":...,"end":...,"text":"..."}
             if (!trimmed.StartsWith("{") || !trimmed.EndsWith("}"))
             {
                 return;
@@ -314,7 +303,6 @@ public class MicrophoneManager : MonoBehaviour
             if (string.IsNullOrWhiteSpace(text))
                 return;
 
-            // Don’t treat known “noise” annotations as real speech
             string lower = text.ToLowerInvariant();
             if (lower.Contains("static crackling") ||
                 lower.Contains("static") ||
@@ -385,7 +373,6 @@ public class MicrophoneManager : MonoBehaviour
             if (lastSamplePosition >= totalClipSamples)
                 lastSamplePosition -= totalClipSamples;
 
-            // Compute RMS level for debug UI
             float sumSq = 0f;
             for (int i = 0; i < floatsPerChunk; i++)
             {
@@ -468,7 +455,6 @@ public class MicrophoneManager : MonoBehaviour
         var cfg = RuntimeGameConfig.Instance;
         if (cfg == null || cfg.inputMode != InputMode.Microphone)
         {
-            // Pipeline is still useful for mic-test UI, but we don’t drive minigames
             return;
         }
 

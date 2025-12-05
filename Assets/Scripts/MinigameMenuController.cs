@@ -17,7 +17,7 @@ public class MinigameMenuController : MonoBehaviour
     public TMP_InputField trialsPerMinigameInputField;
 
     [Header("Input Mode")]
-    public TMP_Dropdown inputModeDropdown;   // Keyboard / Microphone
+    public TMP_Dropdown inputModeDropdown;   
 
     [Header("Timing UI")]
     public TMP_InputField answerTimeInputField;
@@ -59,12 +59,9 @@ public class MinigameMenuController : MonoBehaviour
         SetupCountDropdown();
         SetupTimingFields();
         InitMicrophoneDrowdown();
-        SetupInputModeDropdown(cfg);   // 👈 use cfg here
+        SetupInputModeDropdown(cfg);   
     }
 
-    // -----------------------------------------------------
-    //  Count & ordering of minigames
-    // -----------------------------------------------------
     private void SetupCountDropdown()
     {
         if (countDropdown == null)
@@ -132,9 +129,6 @@ public class MinigameMenuController : MonoBehaviour
         RebuildDropdowns(count);
     }
 
-    // -----------------------------------------------------
-    //  Timing + trials fields
-    // -----------------------------------------------------
     private void SetupTimingFields()
     {
         float defaultAnswer = 0f;
@@ -163,9 +157,6 @@ public class MinigameMenuController : MonoBehaviour
             trialGapInputField.text = defaultTrialGap.ToString("0.0");
     }
 
-    // -----------------------------------------------------
-    //  Input mode dropdown (Keyboard / Mic)
-    // -----------------------------------------------------
     private void SetupInputModeDropdown(RuntimeGameConfig cfg)
     {
         if (inputModeDropdown == null)
@@ -184,16 +175,12 @@ public class MinigameMenuController : MonoBehaviour
         inputModeDropdown.SetValueWithoutNotify(index);
         inputModeDropdown.RefreshShownValue();
 
-        // If you want cfg to update immediately when changed:
         inputModeDropdown.onValueChanged.AddListener(i =>
         {
             cfg.inputMode = (i == 1) ? InputMode.Microphone : InputMode.Keyboard;
         });
     }
 
-    // -----------------------------------------------------
-    //  Start button
-    // -----------------------------------------------------
     public void OnStartButtonPressed()
     {
         if (MinigameManager.Instance == null)
@@ -249,14 +236,8 @@ public class MinigameMenuController : MonoBehaviour
         MinigameManager.Instance.globalTrialsPerMinigame = trialsPerMinigame;
         MinigameManager.Instance.globalTrialGap = trialGap;
 
-        // Input mode is already stored in RuntimeGameConfig by the dropdown callback.
         var cfg = EnsureConfig();
 
-        // 🔊 With the new always-running mic pipeline,
-        // we do NOT need to start it here anymore.
-        // It’s already running from the singleton + MicrophoneManager.Start().
-
-        // Build ordered sequence of minigames
         MinigameType[] order = new MinigameType[dropdowns.Count];
 
         for (int i = 0; i < dropdowns.Count; i++)
@@ -278,9 +259,6 @@ public class MinigameMenuController : MonoBehaviour
         SceneManager.LoadScene(gameplaySceneName);
     }
 
-    // -----------------------------------------------------
-    //  Microphone device selection
-    // -----------------------------------------------------
     void InitMicrophoneDrowdown()
     {
         if (!microphoneDropdown) return;
@@ -317,9 +295,6 @@ public class MinigameMenuController : MonoBehaviour
         cfg.selectedMicrophoneIndex = index;
     }
 
-    // -----------------------------------------------------
-    //  Config + app exit
-    // -----------------------------------------------------
     RuntimeGameConfig EnsureConfig()
     {
         var cfg = RuntimeGameConfig.Instance;
@@ -340,9 +315,6 @@ public class MinigameMenuController : MonoBehaviour
 #endif
     }
 
-    // -----------------------------------------------------
-    //  System checks (unchanged from your version)
-    // -----------------------------------------------------
     void PerformSystemChecks()
     {
         if (!IsSupportedOS())

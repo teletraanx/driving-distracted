@@ -5,14 +5,14 @@ using TMPro;
 public class MicTestUI : MonoBehaviour
 {
     [Header("UI")]
-    public GameObject panelRoot;      // Optional: turn the whole panel on/off
-    public Slider levelSlider;        // Slider with min=0, max=1
-    public TMP_Text statusText;       // "Say something..." / "Heard: ..."
+    public GameObject panelRoot;      
+    public Slider levelSlider;      
+    public TMP_Text statusText;       
 
     [Header("Tuning")]
-    public float levelGain = 6f;      // Boost mic level into 0–1ish
-    public float smoothSpeed = 10f;   // Smoothing for the bar
-    public float whisperTimeout = 5f; // How long until we say "waiting..." again
+    public float levelGain = 6f;      
+    public float smoothSpeed = 10f;  
+    public float whisperTimeout = 5f; 
 
     private MicrophoneManager mic;
     private float smoothedLevel = 0f;
@@ -31,14 +31,12 @@ public class MicTestUI : MonoBehaviour
             return;
         }
 
-        // ---- Mic level bar ----
         float target = Mathf.Clamp01(mic.currentLevel * levelGain);
         smoothedLevel = Mathf.Lerp(smoothedLevel, target, Time.deltaTime * smoothSpeed);
 
         if (levelSlider != null)
             levelSlider.value = smoothedLevel;
 
-        // ---- FFmpeg + Whisper status ----
         if (statusText != null)
         {
             if (!mic.IsStreaming)
@@ -65,7 +63,6 @@ public class MicTestUI : MonoBehaviour
         }
     }
 
-    // Optional UI toggle
     public void ShowPanel()
     {
         if (panelRoot != null)
@@ -74,7 +71,6 @@ public class MicTestUI : MonoBehaviour
         if (mic == null && MicrophoneManagerSingleton.Instance != null)
             mic = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
 
-        // ❌ No call to StartMicPipelineIfNeeded() anymore
     }
 
     public void HidePanel()
