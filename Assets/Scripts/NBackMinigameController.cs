@@ -22,7 +22,7 @@ public class NBackMinigameController : MonoBehaviour
     public TMP_Text option2Text;
 
     [Header("Speech Feedback")]
-    public TMP_Text feedbackText;   
+    public TMP_Text feedbackText;
 
     [Header("Timing")]
     public float timeBetweenRounds = 0f;
@@ -35,7 +35,7 @@ public class NBackMinigameController : MonoBehaviour
     public int sequenceLength = 3;
 
     [Header("Timeout")]
-    public bool neverTimeout = true;  
+    public bool neverTimeout = true;
 
     private NBackState state = NBackState.Cooldown;
     private float stateTimer = 0f;
@@ -51,6 +51,15 @@ public class NBackMinigameController : MonoBehaviour
 
     private MicrophoneManager microphoneManager;
 
+    // Trials
+    private int trialsRemaining = 0;
+    private int trialsTotal = 0;
+    private bool runStarted = false;
+    private float currentTrialStartTime;
+
+    // Input mode
+    private InputMode inputMode = InputMode.Keyboard;
+
     private void Start()
     {
         if (panelRoot != null)
@@ -60,17 +69,33 @@ public class NBackMinigameController : MonoBehaviour
             feedbackText.enabled = false;
 
         state = NBackState.Cooldown;
-        stateTimer = timeBetweenRounds;
 
+        // Global settings
         if (MinigameManager.Instance != null)
         {
             answerDuration = MinigameManager.Instance.globalAnswerDuration;
 
             if (answerDuration <= 0f)
                 neverTimeout = true;
+
+            trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
+            trialsRemaining = trialsTotal;
+
+            timeBetweenRounds = MinigameManager.Instance.globalTrialGap;
+        }
+        else
+        {
+            trialsTotal = trialsRemaining = 1;
         }
 
-        if (MicrophoneManagerSingleton.Instance != null)
+        stateTimer = timeBetweenRounds;
+
+        // Input mode from config
+        var cfg = RuntimeGameConfig.Instance;
+        inputMode = (cfg != null) ? cfg.inputMode : InputMode.Keyboard;
+
+        // Mic subscription only if in microphone mode
+        if (inputMode == InputMode.Microphone && MicrophoneManagerSingleton.Instance != null)
         {
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
             if (microphoneManager != null)
@@ -105,6 +130,7 @@ public class NBackMinigameController : MonoBehaviour
                 break;
 
             case NBackState.ShowingSequence:
+                // sequence coroutine drives this state
                 break;
 
             case NBackState.WaitingForAnswer:
@@ -115,12 +141,26 @@ public class NBackMinigameController : MonoBehaviour
 
     private void HandleCooldown()
     {
-        if (stateTimer <= 0f &&
-            MinigameManager.Instance != null &&
-            MinigameManager.Instance.CanStartMinigame(MinigameType.NBack))
+        if (stateTimer > 0f)
+            return;
+
+        if (!runStarted)
         {
-            MinigameManager.Instance.NotifyMinigameStarted(MinigameType.NBack);
-            BeginStartBuffer();
+            if (MinigameManager.Instance != null &&
+                MinigameManager.Instance.CanStartMinigame(MinigameType.NBack))
+            {
+                MinigameManager.Instance.NotifyMinigameStarted(MinigameType.NBack);
+                runStarted = true;
+                BeginStartBuffer();
+            }
+        }
+        else
+        {
+            // We are in the middle of this minigame's block, between trials
+            if (trialsRemaining > 0)
+            {
+                BeginStartBuffer();
+            }
         }
     }
 
@@ -191,6 +231,9 @@ public class NBackMinigameController : MonoBehaviour
         state = NBackState.WaitingForAnswer;
         stateTimer = answerDuration;
 
+        // mark trial start (for response time)
+        currentTrialStartTime = Time.time;
+
         if (phaseText != null)
             phaseText.text = "NOW ANSWER";
 
@@ -228,7 +271,10 @@ public class NBackMinigameController : MonoBehaviour
             return;
         }
 
-        if (neverTimeout)
+        // mic answers come via HandleNumberRecognized
+
+        if (neverTimeout || MinigameManager.Instance == null ||
+            MinigameManager.Instance.globalAnswerDuration <= 0f)
             return;
 
         stateTimer -= Time.deltaTime;
@@ -240,6 +286,9 @@ public class NBackMinigameController : MonoBehaviour
 
     private void HandleNumberRecognized(int number)
     {
+        if (inputMode != InputMode.Microphone)
+            return;
+
         Debug.Log($"[NBackGame] HandleNumberRecognized called with: {number}, state={state}");
 
         if (state == NBackState.WaitingForAnswer && (number == 1 || number == 2))
@@ -250,6 +299,9 @@ public class NBackMinigameController : MonoBehaviour
 
     private void HandleUnrecognizedSpeech()
     {
+        if (inputMode != InputMode.Microphone)
+            return;
+
         if (state != NBackState.WaitingForAnswer)
             return;
 
@@ -302,12 +354,22 @@ public class NBackMinigameController : MonoBehaviour
             sequenceCoroutine = null;
         }
 
-        if (MinigameManager.Instance != null)
-            MinigameManager.Instance.NotifyMinigameEnded();
+        // trial bookkeeping
+        trialsRemaining--;
+
+        if (trialsRemaining <= 0)
+        {
+            if (MinigameManager.Instance != null)
+                MinigameManager.Instance.NotifyMinigameEnded();
+        }
+        // else: stay in Cooldown, HandleCooldown will start next trial
     }
 
     private int GetPlayerInput()
     {
+        if (inputMode != InputMode.Keyboard)
+            return 0;
+
         if (Keyboard.current == null) return 0;
 
         if (Keyboard.current.digit1Key.wasPressedThisFrame) return 1;
@@ -324,9 +386,15 @@ public class NBackMinigameController : MonoBehaviour
         bool isCorrect = (chosenOption == correctOptionIndex);
         MinigameOutcome outcome = isCorrect ? MinigameOutcome.Correct : MinigameOutcome.Incorrect;
 
+        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
+        if (trialsDoneSoFar > trialsTotal)
+            trialsDoneSoFar = trialsTotal;
+
         string detail =
-            $"NBack: sequence={new string(sequence)}, " +
+            $"[Trial {trialsDoneSoFar}/{trialsTotal}] NBack: sequence={new string(sequence)}, " +
             $"correctLetter={correctLetter}, wrongLetter={wrongLetter}, playerPick={chosenOption}";
+
+        float responseTime = Time.time - currentTrialStartTime;
 
         if (MinigameManager.Instance != null)
         {
@@ -334,7 +402,8 @@ public class NBackMinigameController : MonoBehaviour
                 MinigameType.NBack,
                 outcome,
                 isCorrect,
-                detail
+                detail,
+                responseTime
             );
         }
 
@@ -343,7 +412,13 @@ public class NBackMinigameController : MonoBehaviour
 
     private void Timeout()
     {
-        string detail = $"NBack: sequence={new string(sequence)} (Timeout)";
+        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
+        if (trialsDoneSoFar > trialsTotal)
+            trialsDoneSoFar = trialsTotal;
+
+        string detail = $"[Trial {trialsDoneSoFar}/{trialsTotal}] NBack: sequence={new string(sequence)} (Timeout)";
+
+        float responseTime = Time.time - currentTrialStartTime;
 
         if (MinigameManager.Instance != null)
         {
@@ -351,7 +426,8 @@ public class NBackMinigameController : MonoBehaviour
                 MinigameType.NBack,
                 MinigameOutcome.Timeout,
                 false,
-                detail
+                detail,
+                responseTime
             );
         }
 

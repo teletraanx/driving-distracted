@@ -22,7 +22,7 @@ public class SimonMinigameController : MonoBehaviour
     public TMP_Text option2Text;
 
     [Header("Speech Feedback")]
-    public TMP_Text feedbackText;   
+    public TMP_Text feedbackText;
 
     [Header("Timing")]
     public float timeBetweenRounds = 0f;
@@ -48,6 +48,15 @@ public class SimonMinigameController : MonoBehaviour
 
     private MicrophoneManager microphoneManager;
 
+    // Trials
+    private int trialsRemaining = 0;
+    private int trialsTotal = 0;
+    private bool runStarted = false;
+    private float currentTrialStartTime;
+
+    // Input mode
+    private InputMode inputMode = InputMode.Keyboard;
+
     private void Start()
     {
         if (panelRoot != null)
@@ -60,7 +69,7 @@ public class SimonMinigameController : MonoBehaviour
             feedbackText.enabled = false;
 
         state = SimonState.Cooldown;
-        stateTimer = timeBetweenRounds;
+        
 
         if (MinigameManager.Instance != null)
         {
@@ -68,9 +77,24 @@ public class SimonMinigameController : MonoBehaviour
 
             if (answerDuration <= 0f)
                 neverTimeout = true;
+
+            trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
+            trialsRemaining = trialsTotal;
+
+            timeBetweenRounds = MinigameManager.Instance.globalTrialGap;
+        }
+        else
+        {
+            trialsTotal = trialsRemaining = 1;
         }
 
-        if (MicrophoneManagerSingleton.Instance != null)
+        stateTimer = timeBetweenRounds;
+
+        // Input mode
+        var cfg = RuntimeGameConfig.Instance;
+        inputMode = (cfg != null) ? cfg.inputMode : InputMode.Keyboard;
+
+        if (inputMode == InputMode.Microphone && MicrophoneManagerSingleton.Instance != null)
         {
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
             if (microphoneManager != null)
@@ -105,6 +129,7 @@ public class SimonMinigameController : MonoBehaviour
                 break;
 
             case SimonState.ShowingSequence:
+                // driven by coroutine
                 break;
 
             case SimonState.WaitingForAnswer:
@@ -115,12 +140,26 @@ public class SimonMinigameController : MonoBehaviour
 
     private void HandleCooldown()
     {
-        if (stateTimer <= 0f &&
-            MinigameManager.Instance != null &&
-            MinigameManager.Instance.CanStartMinigame(MinigameType.SimonSays))
+        if (stateTimer > 0f)
+            return;
+
+        if (!runStarted)
         {
-            MinigameManager.Instance.NotifyMinigameStarted(MinigameType.SimonSays);
-            BeginStartBuffer();
+            if (MinigameManager.Instance != null &&
+                MinigameManager.Instance.CanStartMinigame(MinigameType.SimonSays))
+            {
+                MinigameManager.Instance.NotifyMinigameStarted(MinigameType.SimonSays);
+                runStarted = true;
+                BeginStartBuffer();
+            }
+        }
+        else
+        {
+            // between trials in this minigame
+            if (trialsRemaining > 0)
+            {
+                BeginStartBuffer();
+            }
         }
     }
 
@@ -135,10 +174,11 @@ public class SimonMinigameController : MonoBehaviour
         if (phaseText != null)
             phaseText.text = "GET READY";
 
-        option1Text.text = "";
-        option2Text.text = "";
+        if (option1Text != null) option1Text.text = "";
+        if (option2Text != null) option2Text.text = "";
 
-        colorDisplay.color = Color.black;
+        if (colorDisplay != null)
+            colorDisplay.color = Color.black;
 
         if (feedbackText != null)
             feedbackText.enabled = false;
@@ -168,9 +208,11 @@ public class SimonMinigameController : MonoBehaviour
         if (phaseText != null)
             phaseText.text = "WATCH THE ORDER";
 
-        option1Text.text = "";
-        option2Text.text = "";
-        colorDisplay.color = Color.black;
+        if (option1Text != null) option1Text.text = "";
+        if (option2Text != null) option2Text.text = "";
+
+        if (colorDisplay != null)
+            colorDisplay.color = Color.black;
 
         if (feedbackText != null)
             feedbackText.enabled = false;
@@ -185,6 +227,8 @@ public class SimonMinigameController : MonoBehaviour
         state = SimonState.WaitingForAnswer;
         stateTimer = answerDuration;
 
+        currentTrialStartTime = Time.time;
+
         if (phaseText != null)
             phaseText.text = "NOW ANSWER";
 
@@ -193,13 +237,17 @@ public class SimonMinigameController : MonoBehaviour
 
         if (correctOptionIndex == 1)
         {
-            option1Text.text = $"Say/Press 1: {correctSequenceStr}";
-            option2Text.text = $"Say/Press 2: {wrongSequenceStr}";
+            if (option1Text != null)
+                option1Text.text = $"Say/Press 1: {correctSequenceStr}";
+            if (option2Text != null)
+                option2Text.text = $"Say/Press 2: {wrongSequenceStr}";
         }
         else
         {
-            option1Text.text = $"Say/Press 1: {wrongSequenceStr}";
-            option2Text.text = $"Say/Press 2: {correctSequenceStr}";
+            if (option1Text != null)
+                option1Text.text = $"Say/Press 1: {wrongSequenceStr}";
+            if (option2Text != null)
+                option2Text.text = $"Say/Press 2: {correctSequenceStr}";
         }
     }
 
@@ -212,7 +260,10 @@ public class SimonMinigameController : MonoBehaviour
             return;
         }
 
-        if (neverTimeout)
+        // mic answers via HandleNumberRecognized
+
+        if (neverTimeout || MinigameManager.Instance == null ||
+            MinigameManager.Instance.globalAnswerDuration <= 0f)
         {
             return;
         }
@@ -226,6 +277,9 @@ public class SimonMinigameController : MonoBehaviour
 
     private void HandleNumberRecognized(int number)
     {
+        if (inputMode != InputMode.Microphone)
+            return;
+
         Debug.Log($"[SimonGame] HandleNumberRecognized called with: {number}, state={state}");
 
         if (state == SimonState.WaitingForAnswer && (number == 1 || number == 2))
@@ -236,6 +290,9 @@ public class SimonMinigameController : MonoBehaviour
 
     private void HandleUnrecognizedSpeech()
     {
+        if (inputMode != InputMode.Microphone)
+            return;
+
         if (state != SimonState.WaitingForAnswer)
             return;
 
@@ -267,6 +324,9 @@ public class SimonMinigameController : MonoBehaviour
 
     private int GetPlayerInput()
     {
+        if (inputMode != InputMode.Keyboard)
+            return 0;
+
         if (Keyboard.current == null) return 0;
 
         if (Keyboard.current.digit1Key.wasPressedThisFrame) return 1;
@@ -283,13 +343,22 @@ public class SimonMinigameController : MonoBehaviour
         bool correct = (chosen == correctOptionIndex);
         MinigameOutcome outcome = correct ? MinigameOutcome.Correct : MinigameOutcome.Incorrect;
 
-        string detail = $"Correct={correctSequenceStr}, Wrong={wrongSequenceStr}, PlayerPick={chosen}";
+        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
+        if (trialsDoneSoFar > trialsTotal)
+            trialsDoneSoFar = trialsTotal;
+
+        string detail =
+            $"[Trial {trialsDoneSoFar}/{trialsTotal}] " +
+            $"Correct={correctSequenceStr}, Wrong={wrongSequenceStr}, PlayerPick={chosen}";
+
+        float responseTime = Time.time - currentTrialStartTime;
 
         MinigameManager.Instance.RegisterResult(
             MinigameType.SimonSays,
             outcome,
             correct,
-            detail
+            detail,
+            responseTime
         );
 
         EndRound();
@@ -297,13 +366,22 @@ public class SimonMinigameController : MonoBehaviour
 
     private void Timeout()
     {
-        string detail = $"Correct={correctSequenceStr} (Timeout)";
+        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
+        if (trialsDoneSoFar > trialsTotal)
+            trialsDoneSoFar = trialsTotal;
+
+        string detail =
+            $"[Trial {trialsDoneSoFar}/{trialsTotal}] " +
+            $"Correct={correctSequenceStr} (Timeout)";
+
+        float responseTime = Time.time - currentTrialStartTime;
 
         MinigameManager.Instance.RegisterResult(
             MinigameType.SimonSays,
             MinigameOutcome.Timeout,
             false,
-            detail
+            detail,
+            responseTime
         );
 
         EndRound();
@@ -317,7 +395,8 @@ public class SimonMinigameController : MonoBehaviour
         if (panelRoot != null)
             panelRoot.SetActive(false);
 
-        colorDisplay.color = Color.black;
+        if (colorDisplay != null)
+            colorDisplay.color = Color.black;
 
         if (feedbackText != null)
             feedbackText.enabled = false;
@@ -328,7 +407,15 @@ public class SimonMinigameController : MonoBehaviour
             sequenceCoroutine = null;
         }
 
-        MinigameManager.Instance.NotifyMinigameEnded();
+        // trial bookkeeping
+        trialsRemaining--;
+
+        if (trialsRemaining <= 0)
+        {
+            if (MinigameManager.Instance != null)
+                MinigameManager.Instance.NotifyMinigameEnded();
+        }
+        // else: Cooldown then BeginStartBuffer again
     }
 
     private void GenerateSequence()
@@ -377,14 +464,18 @@ public class SimonMinigameController : MonoBehaviour
         return s;
     }
 
-    private System.Collections.IEnumerator PlaySequenceCoroutine()
+    private IEnumerator PlaySequenceCoroutine()
     {
         for (int i = 0; i < sequence.Length; i++)
         {
-            colorDisplay.color = colorValues[sequence[i]];
+            if (colorDisplay != null)
+                colorDisplay.color = colorValues[sequence[i]];
+
             yield return new WaitForSeconds(colorShowDuration);
 
-            colorDisplay.color = Color.black;
+            if (colorDisplay != null)
+                colorDisplay.color = Color.black;
+
             yield return new WaitForSeconds(colorGapDuration);
         }
 

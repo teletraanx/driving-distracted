@@ -11,7 +11,7 @@ public class StroopMinigameController : MonoBehaviour
     public TMP_Text instructionText;
 
     [Header("Speech Feedback")]
-    public TMP_Text feedbackText;   
+    public TMP_Text feedbackText;
 
     [Header("Timing")]
     public float timeBetweenRounds = 0f;
@@ -32,10 +32,22 @@ public class StroopMinigameController : MonoBehaviour
 
     private MicrophoneManager microphoneManager;
 
+    // Trials
+    private int trialsRemaining = 0;
+    private int trialsTotal = 0;
+    private bool runStarted = false;
+    private float currentTrialStartTime;
+
+    // Input mode
+    private InputMode inputMode = InputMode.Keyboard;
+
     private void Start()
     {
         if (panelRoot != null)
             panelRoot.SetActive(false);
+
+        if (feedbackText != null)
+            feedbackText.enabled = false;
 
         cooldownTimer = timeBetweenRounds;
 
@@ -45,13 +57,30 @@ public class StroopMinigameController : MonoBehaviour
 
             if (questionDuration <= 0f)
                 neverTimeout = true;
+
+            trialsTotal = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
+            trialsRemaining = trialsTotal;
+            timeBetweenRounds = MinigameManager.Instance.globalTrialGap;
+            cooldownTimer = timeBetweenRounds;
+        }
+        else
+        {
+            trialsTotal = trialsRemaining = 1;
         }
 
-        if (MicrophoneManagerSingleton.Instance != null)
+        // Input mode
+        var cfg = RuntimeGameConfig.Instance;
+        inputMode = (cfg != null) ? cfg.inputMode : InputMode.Keyboard;
+
+        // Mic subscription only if microphone mode
+        if (inputMode == InputMode.Microphone && MicrophoneManagerSingleton.Instance != null)
         {
             microphoneManager = MicrophoneManagerSingleton.Instance.GetMicrophoneManager();
             if (microphoneManager != null)
+            {
                 microphoneManager.OnNumberRecognized += HandleNumberRecognized;
+                microphoneManager.OnUnrecognizedSpeech += HandleUnrecognizedSpeech;
+            }
         }
     }
 
@@ -70,12 +99,23 @@ public class StroopMinigameController : MonoBehaviour
         {
             cooldownTimer -= Time.deltaTime;
 
-            if (cooldownTimer <= 0f &&
-                MinigameManager.Instance != null &&
-                MinigameManager.Instance.CanStartMinigame(MinigameType.Stroop))
+            if (!runStarted)
             {
-                MinigameManager.Instance.NotifyMinigameStarted(MinigameType.Stroop);
-                StartQuestion();
+                if (cooldownTimer <= 0f &&
+                    MinigameManager.Instance != null &&
+                    MinigameManager.Instance.CanStartMinigame(MinigameType.Stroop))
+                {
+                    MinigameManager.Instance.NotifyMinigameStarted(MinigameType.Stroop);
+                    runStarted = true;
+                    StartQuestion();
+                }
+            }
+            else
+            {
+                if (cooldownTimer <= 0f && trialsRemaining > 0)
+                {
+                    StartQuestion();
+                }
             }
         }
         else
@@ -87,7 +127,10 @@ public class StroopMinigameController : MonoBehaviour
                 return;
             }
 
-            if (neverTimeout)
+            // mic answers handled via HandleNumberRecognized
+
+            if (neverTimeout || MinigameManager.Instance == null ||
+                MinigameManager.Instance.globalAnswerDuration <= 0f)
                 return;
 
             questionTimer -= Time.deltaTime;
@@ -100,6 +143,9 @@ public class StroopMinigameController : MonoBehaviour
 
     private void HandleNumberRecognized(int number)
     {
+        if (inputMode != InputMode.Microphone)
+            return;
+
         Debug.Log($"[StroopGame] HandleNumberRecognized called with: {number}, questionActive={questionActive}");
 
         if (questionActive && (number == 1 || number == 2))
@@ -110,6 +156,9 @@ public class StroopMinigameController : MonoBehaviour
 
     private void HandleUnrecognizedSpeech()
     {
+        if (inputMode != InputMode.Microphone)
+            return;
+
         if (!questionActive)
             return;
 
@@ -141,6 +190,9 @@ public class StroopMinigameController : MonoBehaviour
 
     private int GetPlayerInput()
     {
+        if (inputMode != InputMode.Keyboard)
+            return 0;
+
         if (Keyboard.current == null) return 0;
 
         if (Keyboard.current.digit1Key.wasPressedThisFrame) return 1;
@@ -154,8 +206,19 @@ public class StroopMinigameController : MonoBehaviour
 
     private void StartQuestion()
     {
+        if (trialsRemaining <= 0)
+            return;
+
         questionActive = true;
-        questionTimer = questionDuration;
+
+        if (!neverTimeout && MinigameManager.Instance != null &&
+            MinigameManager.Instance.globalAnswerDuration > 0f)
+        {
+            questionDuration = MinigameManager.Instance.globalAnswerDuration;
+            questionTimer = questionDuration;
+        }
+
+        currentTrialStartTime = Time.time;
 
         if (panelRoot != null)
             panelRoot.SetActive(true);
@@ -178,8 +241,15 @@ public class StroopMinigameController : MonoBehaviour
         if (feedbackText != null)
             feedbackText.enabled = false;
 
-        if (MinigameManager.Instance != null)
-            MinigameManager.Instance.NotifyMinigameEnded();
+        // trial bookkeeping
+        trialsRemaining--;
+
+        if (trialsRemaining <= 0)
+        {
+            if (MinigameManager.Instance != null)
+                MinigameManager.Instance.NotifyMinigameEnded();
+        }
+        // else: wait in cooldown, then StartQuestion again
     }
 
     private void GenerateTrial()
@@ -212,7 +282,10 @@ public class StroopMinigameController : MonoBehaviour
 
         if (instructionText != null)
         {
-            instructionText.text = "Does the WORD match the COLOR?\nSay/Press 1 = YES\nSay/Press 2 = NO";
+            instructionText.text =
+                "Does the WORD match the COLOR?\n" +
+                "Say/Press 1 = YES\n" +
+                "Say/Press 2 = NO";
         }
     }
 
@@ -222,7 +295,17 @@ public class StroopMinigameController : MonoBehaviour
         bool correct = (playerSaysMatch == isMatch);
 
         MinigameOutcome outcome = correct ? MinigameOutcome.Correct : MinigameOutcome.Incorrect;
-        string detail = $"Stroop: Word={colorWords[meaningIndex]}, Color={colorWords[colorIndex]}, IsMatch={isMatch}, PlayerSaysMatch={playerSaysMatch}";
+
+        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
+        if (trialsDoneSoFar > trialsTotal)
+            trialsDoneSoFar = trialsTotal;
+
+        string detail =
+            $"[Trial {trialsDoneSoFar}/{trialsTotal}] " +
+            $"Stroop: Word={colorWords[meaningIndex]}, Color={colorWords[colorIndex]}, " +
+            $"IsMatch={isMatch}, PlayerSaysMatch={playerSaysMatch}";
+
+        float responseTime = Time.time - currentTrialStartTime;
 
         if (MinigameManager.Instance != null)
         {
@@ -230,7 +313,8 @@ public class StroopMinigameController : MonoBehaviour
                 MinigameType.Stroop,
                 outcome,
                 correct,
-                detail
+                detail,
+                responseTime
             );
         }
 
@@ -239,7 +323,15 @@ public class StroopMinigameController : MonoBehaviour
 
     private void Timeout()
     {
-        string detail = $"Stroop: Word={colorWords[meaningIndex]}, Color={colorWords[colorIndex]} (Timeout)";
+        int trialsDoneSoFar = trialsTotal - trialsRemaining + 1;
+        if (trialsDoneSoFar > trialsTotal)
+            trialsDoneSoFar = trialsTotal;
+
+        string detail =
+            $"[Trial {trialsDoneSoFar}/{trialsTotal}] " +
+            $"Stroop: Word={colorWords[meaningIndex]}, Color={colorWords[colorIndex]} (Timeout)";
+
+        float responseTime = Time.time - currentTrialStartTime;
 
         if (MinigameManager.Instance != null)
         {
@@ -247,7 +339,8 @@ public class StroopMinigameController : MonoBehaviour
                 MinigameType.Stroop,
                 MinigameOutcome.Timeout,
                 false,
-                detail
+                detail,
+                responseTime
             );
         }
 

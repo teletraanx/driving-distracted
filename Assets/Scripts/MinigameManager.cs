@@ -45,7 +45,9 @@ public class MinigameManager : MonoBehaviour
 
     [Header("Global Minigame Settings")]
     public float globalAnswerDuration = 8f;   
-    public float globalMinigameGap = 5f;     
+    public float globalMinigameGap = 5f;
+    public int globalTrialsPerMinigame = 1;
+    public float globalTrialGap = 1f;
 
     [Header("Sequence Settings")]
     public MinigameType[] sequenceOrder = new MinigameType[]
@@ -223,4 +225,6 @@ public class MinigameManager : MonoBehaviour
             collisionsNoMinigame++;
         }
     }
+
+
 }

@@ -14,6 +14,7 @@ public class MinigameMenuController : MonoBehaviour
     public Transform dropdownParent;
     public TMP_Dropdown dropdownPrefab;
     public TMP_Text warningText;
+    public TMP_InputField trialsPerMinigameInputField;
 
     [Header("Input Mode")]
     public TMP_Dropdown inputModeDropdown;
@@ -21,6 +22,7 @@ public class MinigameMenuController : MonoBehaviour
     [Header("Timing UI")]
     public TMP_InputField answerTimeInputField;
     public TMP_InputField gapTimeInputField;
+    public TMP_InputField trialGapInputField;
 
     [Header("Game Settings")]
     public string gameplaySceneName = "MainGame";
@@ -93,11 +95,15 @@ public class MinigameMenuController : MonoBehaviour
     {
         float defaultAnswer = 0f;
         float defaultGap = 5f;
+        int defaultTrials = 1;
+        float defaultTrialGap = 1f;
 
         if (MinigameManager.Instance != null)
         {
             defaultAnswer = MinigameManager.Instance.globalAnswerDuration;
             defaultGap = MinigameManager.Instance.globalMinigameGap;
+            defaultTrials = Mathf.Max(1, MinigameManager.Instance.globalTrialsPerMinigame);
+            defaultTrialGap = MinigameManager.Instance.globalTrialGap;
         }
 
         if (answerTimeInputField != null)
@@ -105,6 +111,12 @@ public class MinigameMenuController : MonoBehaviour
 
         if (gapTimeInputField != null)
             gapTimeInputField.text = defaultGap.ToString("0");
+
+        if (trialsPerMinigameInputField != null)
+            trialsPerMinigameInputField.text = defaultTrials.ToString();
+
+        if (trialGapInputField != null)
+            trialGapInputField.text = defaultTrialGap.ToString("0.0");
     }
 
     public void OnCountDropdownChanged(int optionIndex)
@@ -166,6 +178,8 @@ public class MinigameMenuController : MonoBehaviour
 
         float answerTime = 0f;
         float gapTime = 5f;
+        int trialsPerMinigame = 1;
+        float trialGap = 1f;
 
         if (answerTimeInputField != null &&
             float.TryParse(answerTimeInputField.text, out float parsedAnswer) &&
@@ -181,8 +195,24 @@ public class MinigameMenuController : MonoBehaviour
             gapTime = parsedGap;
         }
 
+        if (trialsPerMinigameInputField != null &&
+            int.TryParse(trialsPerMinigameInputField.text, out int parsedTrials) &&
+            parsedTrials > 0)
+        {
+            trialsPerMinigame = parsedTrials;
+        }
+
+        if (trialGapInputField != null &&
+            float.TryParse(trialGapInputField.text, out float parsedTrialGap) &&
+            parsedTrialGap >= 0f)
+        {
+            trialGap = parsedTrialGap;
+        }
+
         MinigameManager.Instance.globalAnswerDuration = answerTime;
         MinigameManager.Instance.globalMinigameGap = gapTime;
+        MinigameManager.Instance.globalTrialsPerMinigame = trialsPerMinigame;
+        MinigameManager.Instance.globalTrialGap = trialGap;
 
         var cfg = EnsureConfig();
         if (inputModeDropdown != null)
